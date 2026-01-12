@@ -1,0 +1,53 @@
+services:
+  # Main Application (Fastify)
+  app:
+    build: .
+    container_name: wa-gateway-app
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      # Use service names as hostnames
+      - DATABASE_URL=postgres://user:password@postgres:5432/wa_gateway
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      # Bind mount source code for hot reload
+      - .:/app
+      # Avoid overwriting container's node_modules
+      - /app/node_modules
+    depends_on:
+      - postgres
+      - redis
+    # Dev mode command (ensure tsx is in package.json)
+    command: npm run dev
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: wa-gateway-db
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: wa_gateway
+    ports:
+      - '5432:5432' # Expose to host for GUI DB access
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # Redis Queue
+  redis:
+    image: redis:7-alpine
+    container_name: wa-gateway-redis
+    restart: always
+    ports:
+      - '6379:6379' # Expose to host for debugging
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  redisdata:
