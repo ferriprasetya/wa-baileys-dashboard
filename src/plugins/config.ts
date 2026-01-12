@@ -12,13 +12,13 @@ export default fp(async (fastify) => {
   })
 
   await fastify.register(fastifyEnv, {
-    confKey: 'config', // Akses via fastify.config
+    confKey: 'config', // Access from fastify.config
     schema,
-    dotenv: true, // Load file .env
+    dotenv: true, // Load .env file
   })
 })
 
-// Augment Type Definition agar dikenali TypeScript
+// Augment Type Definition
 declare module 'fastify' {
   interface FastifyInstance {
     config: {
