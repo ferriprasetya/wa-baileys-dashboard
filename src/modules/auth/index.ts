@@ -63,11 +63,7 @@ export default async function authModule(fastify: FastifyTypebox) {
 
   // -- POST /auth/logout --
   fastify.post('/logout', async (req, reply) => {
-    console.log('🔄 Logout Request Received')
-
     req.session.delete()
-
-    console.log('LOGOUT:', req.session.get('user'))
 
     reply.header('Cache-Control', 'no-store, max-age=0, must-revalidate')
 
