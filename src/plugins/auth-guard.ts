@@ -14,7 +14,7 @@ export default fp(async (fastify) => {
     const user = req.session?.get('user')
 
     if (url.startsWith('/auth')) {
-      if (user) return reply.redirect('/')
+      if (user && url.startsWith('/auth/login')) return reply.redirect('/')
       return
     }
 
