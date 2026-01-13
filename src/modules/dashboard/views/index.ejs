@@ -13,13 +13,13 @@
   <%- include('partials/sidebar') %>
 
   <main class="md:ml-64 p-4 md:p-8 space-y-6">
-    <div class="flex justify-between items-center">
+    <div class="flex justify-between sm:items-center gap-4 flex-wrap">
       <div>
         <h1 class="text-2xl font-bold text-gray-800">Tenant Management</h1>
         <p class="text-gray-500 text-sm mt-1">Manage WhatsApp sessions and connections.</p>
       </div>
       <button 
-        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition flex items-center"
+        class="w-fit h-fit text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center flex items-center transition"
         hx-get="/tenants/create" 
         hx-target="#modal-container"
       >
@@ -42,7 +42,7 @@
         >
 
         <button 
-          class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition flex items-center"
+          class="text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center transition"
           type="submit"
         >
           Search
