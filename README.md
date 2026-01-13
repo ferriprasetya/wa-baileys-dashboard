@@ -89,6 +89,12 @@ cp .env.example .env
 
 Ensure `DATABASE_URL` and `REDIS_HOST` match your local setup.
 
+**Generate Session Key (Critical)**: Run this command to generate a valid 32-byte key file. Do not use shell redirection (>) as it may corrupt the key with newlines.
+
+```bash
+node -e "require('fs').writeFileSync('secret-key', require('crypto').randomBytes(32))"
+```
+
 3. **Start Infrastructure (DB & Redis)**
 
 Run PostgreSQL and Redis via Docker:
@@ -134,6 +140,14 @@ Access the dashboard at `http://localhost:3000`.
 - `npm run db:seed` - Seed initial data (admin user)
 
 ## 🐳 Docker Production
+
+### Strategy: Volume Mapping (Recommended)
+
+**Generate the key on your host machine** (Production Server) once:
+
+```bash
+node -e "require('fs').writeFileSync('secret-key', require('crypto').randomBytes(32))"
+```
 
 To run the full application (App + DB + Redis) in a production simulation:
 
