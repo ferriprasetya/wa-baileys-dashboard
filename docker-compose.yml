@@ -18,6 +18,8 @@ services:
       - .:/app
       # Avoid overwriting container's node_modules
       - /app/node_modules
+      # Ensure the secret-key file is generated before starting the container, follow instruction in README.md
+      - ./secret-key:/app/secret-key
     depends_on:
       - postgres
       - redis

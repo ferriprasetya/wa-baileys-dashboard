@@ -1,7 +1,7 @@
 import fp from 'fastify-plugin'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import * as schema from '../common/schema.js'
+import * as schema from '@/common/schema.js'
 
 export default fp(async (fastify) => {
   const queryClient = postgres(fastify.config.DATABASE_URL)

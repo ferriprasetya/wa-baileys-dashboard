@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import Fastify from 'fastify'
 import AutoLoad from '@fastify/autoload'
 import path from 'path'
@@ -30,8 +31,7 @@ export async function buildApp() {
 
   await app.register(AutoLoad, {
     dir: path.join(__dirname, 'modules'),
-    options: { prefix: '/api' }, // Default prefix, can be overridden in module
-    // Modules are encapsulated by default
+    encapsulate: true,
   })
 
   return app
