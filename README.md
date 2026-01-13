@@ -5,7 +5,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-v5-blue)
 ![Docker](https://img.shields.io/badge/Docker-Enabled-blue)
 
-A centralized, high-performance WhatsApp Gateway (SaaS-lite) designed to manage multiple WhatsApp sessions via a single dashboard. 
+A centralized, high-performance WhatsApp Gateway (SaaS-lite) designed to manage multiple WhatsApp sessions via a single dashboard.
 
 Built with a **Module-Driven Architecture** (Vertical Slicing) on Fastify, ensuring rapid development without sacrificing performance. It solves common connection issues using Redis-based queuing and database-persistent sessions.
 
@@ -22,6 +22,7 @@ For official WhatsApp integration, consider using the [WhatsApp Business API](ht
 ## 📱 Purpose
 
 This project is specifically designed to manage **multi-device WhatsApp logins** using Baileys library, enabling you to:
+
 - Create and manage multiple independent WhatsApp sessions (one per device/phone number)
 - Automate WhatsApp messaging at scale via a centralized API
 - Persist session credentials securely in PostgreSQL
@@ -37,16 +38,16 @@ This project is specifically designed to manage **multi-device WhatsApp logins**
 
 ## 🛠 Tech Stack
 
-| Component | Technology | Reason |
-| :--- | :--- | :--- |
-| **Runtime** | Node.js (ESM) + TypeScript | Type safety & modern ecosystem. |
-| **Framework** | Fastify | Low overhead, high performance. |
-| **Architecture** | Module Driven (Vertical Slice) | Scalability & organized codebase. |
-| **Database** | PostgreSQL + Drizzle ORM | Relational integrity & rapid query building. |
-| **Queue** | Redis + BullMQ | Reliable job processing. |
-| **WhatsApp Engine** | @whiskeysockets/baileys | Native WebSocket handling. |
-| **Frontend** | EJS + HTMX + TailwindCSS | Zero-build step, server-driven UI. |
-| **Validation** | TypeBox | JSON Schema validation & TS inference. |
+| Component           | Technology                     | Reason                                       |
+| :------------------ | :----------------------------- | :------------------------------------------- |
+| **Runtime**         | Node.js (ESM) + TypeScript     | Type safety & modern ecosystem.              |
+| **Framework**       | Fastify                        | Low overhead, high performance.              |
+| **Architecture**    | Module Driven (Vertical Slice) | Scalability & organized codebase.            |
+| **Database**        | PostgreSQL + Drizzle ORM       | Relational integrity & rapid query building. |
+| **Queue**           | Redis + BullMQ                 | Reliable job processing.                     |
+| **WhatsApp Engine** | @whiskeysockets/baileys        | Native WebSocket handling.                   |
+| **Frontend**        | EJS + HTMX + TailwindCSS       | Zero-build step, server-driven UI.           |
+| **Validation**      | TypeBox                        | JSON Schema validation & TS inference.       |
 
 ## 📂 Project Structure
 

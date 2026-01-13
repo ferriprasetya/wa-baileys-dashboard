@@ -70,3 +70,5 @@ sessions/
 # Misc
 .cache/
 .turbo/
+
+secret-key

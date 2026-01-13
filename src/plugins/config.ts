@@ -17,16 +17,3 @@ export default fp(async (fastify) => {
     dotenv: true, // Load .env file
   })
 })
-
-// Augment Type Definition
-declare module 'fastify' {
-  interface FastifyInstance {
-    config: {
-      NODE_ENV: string
-      PORT: number
-      DATABASE_URL: string
-      REDIS_HOST: string
-      REDIS_PORT: number
-    }
-  }
-}
