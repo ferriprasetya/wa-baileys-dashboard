@@ -36,15 +36,26 @@
   </td>
   <td class="px-6 py-4 whitespace-nowrap">
     <% 
-        let statusColor = 'bg-gray-100 text-gray-800';
-        let statusText = tenant.status || 'NO SESSION';
-        if (statusText === 'CONNECTED') statusColor = 'bg-green-100 text-green-800';
-        else if (statusText === 'DISCONNECTED') statusColor = 'bg-red-100 text-red-800';
-        else if (statusText === 'SCANNING' || statusText === 'CONNECTING') statusColor = 'bg-yellow-100 text-yellow-800';
-      %>
-    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <%= statusColor %>">
+    let statusText = tenant.status || 'DISCONNECTED';
+    let statusClass = '';
+    
+    if (statusText === 'CONNECTED') {
+      statusClass = 'bg-green-100 text-green-800 cursor-default';
+    } else {
+      // Make button clickable if not connected
+      statusClass = 'bg-yellow-100 text-yellow-800 cursor-pointer hover:bg-yellow-200';
+    }
+  %>
+
+    <% if (statusText === 'CONNECTED') { %>
+    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <%= statusClass %>">
       <%= statusText %>
     </span>
+    <% } else { %>
+    <button class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <%= statusClass %>" hx-get="/tenants/scan?tenantId=<%= tenant.id %>&apiKey=<%= tenant.apiKey %>" hx-target="#modal-container">
+      <%= statusText === 'DISCONNECTED' ? 'SCAN QR' : statusText %>
+    </button>
+    <% } %>
   </td>
   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
     <%= tenant.jid ? '+' + tenant.jid.split('@')[0] : '-' %>

@@ -9,3 +9,5 @@ export type FastifyTypebox = FastifyInstance<
   FastifyBaseLogger,
   TypeBoxTypeProvider
 >
+
+export type FastifyDatabase = FastifyTypebox['db']
