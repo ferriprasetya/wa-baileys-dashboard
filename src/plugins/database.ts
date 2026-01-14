@@ -14,8 +14,9 @@ export default fp(async (fastify) => {
   })
 })
 
+export type FastifyDrizzleDB = ReturnType<typeof drizzle<typeof schema>>
 declare module 'fastify' {
   interface FastifyInstance {
-    db: ReturnType<typeof drizzle<typeof schema>>
+    db: FastifyDrizzleDB
   }
 }

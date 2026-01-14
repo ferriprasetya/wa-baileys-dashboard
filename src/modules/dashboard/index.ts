@@ -110,8 +110,8 @@ export default async function dashboardModule(fastify: FastifyTypebox) {
     async (req, reply) => {
       const { id } = req.params
 
-      // TODO: Emit event to WhatsApp Module to close socket connection if active!
-      // Example: fastify.wa.disconnect(id)
+      // Kill WA Connection (Memory & DB Cleanup)
+      await fastify.wa.deleteSession(id)
 
       await fastify.db.transaction(async (tx) => {
         await tx.delete(tenants).where(eq(tenants.id, id))
@@ -134,6 +134,20 @@ export default async function dashboardModule(fastify: FastifyTypebox) {
       await fastify.db.update(tenants).set({ apiKey: newApiKey }).where(eq(tenants.id, id))
 
       return reply.header('HX-Refresh', 'true').send()
+    },
+  )
+
+  // -- GET /tenants/scan (Modal UI) --
+  fastify.get(
+    '/tenants/scan',
+    {
+      schema: { querystring: Type.Object({ tenantId: Type.String(), apiKey: Type.String() }) },
+    },
+    async (req, reply) => {
+      return reply.view('dashboard/views/modals/scan.ejs', {
+        tenantId: req.query.tenantId,
+        apiKey: req.query.apiKey,
+      })
     },
   )
 }
