@@ -3,35 +3,23 @@
     <div class="flex justify-between items-center mb-6">
       <h3 class="text-xl font-bold text-gray-900">Add New Tenant</h3>
       <button onclick="document.getElementById('modal-container').innerHTML = ''" class="text-gray-400 hover:text-gray-600">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
       </button>
     </div>
 
     <form hx-post="/tenants" hx-swap="none" class="space-y-4">
       <div>
         <label class="block text-gray-700 text-sm font-bold mb-2">Tenant Name</label>
-        <input 
-          type="text" 
-          name="name" 
-          placeholder="e.g. Tenant A" 
-          class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:outline-none focus:ring-blue-600 focus:border-blue-600 block w-full p-2.5" 
-          required
-          autofocus
-        >
+        <input type="text" name="name" placeholder="e.g. Tenant A" class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:outline-none focus:ring-blue-600 focus:border-blue-600 block w-full p-2.5" required autofocus>
       </div>
 
       <div class="flex justify-end pt-4">
-        <button 
-          type="button" 
-          onclick="document.getElementById('modal-container').innerHTML = ''" 
-          class="mr-3 px-4 py-2 text-gray-500 hover:text-gray-700 transition"
-        >
+        <button type="button" onclick="document.getElementById('modal-container').innerHTML = ''" class="mr-3 px-4 py-2 text-gray-500 hover:text-gray-700 transition">
           Cancel
         </button>
-        <button 
-          type="submit" 
-          class="text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center transition"
-        >
+        <button type="submit" class="text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center transition">
           Create Tenant
         </button>
       </div>

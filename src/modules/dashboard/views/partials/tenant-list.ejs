@@ -1,71 +1,58 @@
 <% if (!tenants?.length) { %>
-  <tr>
-    <td colspan="5" class="px-6 py-12 text-center text-gray-500 text-sm">
-      No tenants found. Click "Add New Tenant" to get started.
-    </td>
-  </tr>
+<tr>
+  <td colspan="5" class="px-6 py-12 text-center text-gray-500 text-sm">
+    No tenants found. Click "Add New Tenant" to get started.
+  </td>
+</tr>
 <% } %>
 
 <% tenants.forEach(tenant => { %>
-  <tr class="hover:bg-gray-50 transition group">
-    <td class="px-6 py-4 whitespace-nowrap">
-      <div class="text-sm font-medium text-gray-900"><%= tenant.name %></div>
-    </td>
-    <td class="px-6 py-4 whitespace-nowrap">
-      <div class="flex items-center space-x-1">
-        <code class="text-xs bg-gray-100 px-2 py-1 rounded border text-gray-600 font-mono select-all w-40 truncate transition-all duration-200 cursor-text">
-          <%= tenant.apiKey %>
-        </code>
+<tr class="hover:bg-gray-50 transition group">
+  <td class="px-6 py-4 whitespace-nowrap">
+    <div class="text-sm font-medium text-gray-900"><%= tenant.name %></div>
+  </td>
+  <td class="px-6 py-4 whitespace-nowrap">
+    <div class="flex items-center space-x-1">
+      <code class="text-xs bg-gray-100 px-2 py-1 rounded border text-gray-600 font-mono select-all w-40 truncate transition-all duration-200 cursor-text">
+        <%= tenant.apiKey %>
+      </code>
 
-        <button 
-          onclick="copyToClipboard('<%= tenant.apiKey %>', this)" 
-          class="text-gray-400 hover:text-gray-600 p-1 rounded-md transition hover:bg-gray-100"
-          title="Copy to clipboard"
-        >
-          <svg class="w-6 h-6 icon-copy" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
-          </svg>
-          
-          <svg class="w-6 h-6 icon-check hidden text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-        </button>
+      <button onclick="copyToClipboard('<%= tenant.apiKey %>', this)" class="text-gray-400 hover:text-gray-600 p-1 rounded-md transition hover:bg-gray-100" title="Copy to clipboard">
+        <svg class="w-6 h-6 icon-copy" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+        </svg>
 
-        <button 
-          class="text-gray-400 hover:text-blue-600 p-1 rounded-md transition hover:bg-blue-50"
-          title="Regenerate API Key"
-          hx-post="/tenants/<%= tenant.id %>/refresh-key"
-          hx-confirm="Are you sure? Old key will stop working immediately."
-        >
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-          </svg>
-        </button>
-      </div>
-    </td>
-    <td class="px-6 py-4 whitespace-nowrap">
-      <% 
+        <svg class="w-6 h-6 icon-check hidden text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+        </svg>
+      </button>
+
+      <button class="text-gray-400 hover:text-blue-600 p-1 rounded-md transition hover:bg-blue-50" title="Regenerate API Key" hx-post="/tenants/<%= tenant.id %>/refresh-key" hx-confirm="Are you sure? Old key will stop working immediately.">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+        </svg>
+      </button>
+    </div>
+  </td>
+  <td class="px-6 py-4 whitespace-nowrap">
+    <% 
         let statusColor = 'bg-gray-100 text-gray-800';
         let statusText = tenant.status || 'NO SESSION';
         if (statusText === 'CONNECTED') statusColor = 'bg-green-100 text-green-800';
         else if (statusText === 'DISCONNECTED') statusColor = 'bg-red-100 text-red-800';
         else if (statusText === 'SCANNING' || statusText === 'CONNECTING') statusColor = 'bg-yellow-100 text-yellow-800';
       %>
-      <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <%= statusColor %>">
-        <%= statusText %>
-      </span>
-    </td>
-    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-      <%= tenant.jid ? '+' + tenant.jid.split('@')[0] : '-' %>
-    </td>
-    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-      <button 
-        class="text-red-600 hover:text-red-900"
-        hx-delete="/tenants/<%= tenant.id %>"
-        hx-confirm="Delete this tenant?"
-      >
-        Delete
-      </button>
-    </td>
-  </tr>
+    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <%= statusColor %>">
+      <%= statusText %>
+    </span>
+  </td>
+  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+    <%= tenant.jid ? '+' + tenant.jid.split('@')[0] : '-' %>
+  </td>
+  <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+    <button class="text-red-600 hover:text-red-900" hx-delete="/tenants/<%= tenant.id %>" hx-confirm="Delete this tenant?">
+      Delete
+    </button>
+  </td>
+</tr>
 <% }) %>
