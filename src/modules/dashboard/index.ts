@@ -1,5 +1,5 @@
 import { generateApiKey } from '@/common/crypto.js'
-import { tenants, sessions } from '@/common/schema.js'
+import { tenants, sessions, messageLogs } from '@/common/schema.js'
 import { FastifyTypebox } from '@/types/common.js'
 import { Type } from '@sinclair/typebox'
 import { eq, desc, ilike, sql } from 'drizzle-orm'
@@ -147,6 +147,57 @@ export default async function dashboardModule(fastify: FastifyTypebox) {
       return reply.view('dashboard/views/modals/scan.ejs', {
         tenantId: req.query.tenantId,
         apiKey: req.query.apiKey,
+      })
+    },
+  )
+
+  // -- GET /tenants/:id/credentials (Modal) --
+  fastify.get(
+    '/tenants/:id/credentials',
+    {
+      schema: { params: ParamIdSchema },
+    },
+    async (req, reply) => {
+      const { id } = req.params
+
+      const [tenant] = await fastify.db
+        .select({ id: tenants.id, name: tenants.name, apiKey: tenants.apiKey })
+        .from(tenants)
+        .where(eq(tenants.id, id))
+        .limit(1)
+
+      if (!tenant) {
+        return reply.status(404).send({ error: 'Tenant not found' })
+      }
+
+      return reply.view('dashboard/views/modals/credentials.ejs', {
+        tenantId: tenant.id,
+        tenantName: tenant.name,
+        apiKey: tenant.apiKey,
+      })
+    },
+  )
+
+  // -- GET /tenants/:id/logs (Modal) --
+  fastify.get(
+    '/tenants/:id/logs',
+    {
+      schema: { params: ParamIdSchema },
+    },
+    async (req, reply) => {
+      const { id } = req.params
+
+      // Get 50 latest logs
+      const logs = await fastify.db
+        .select()
+        .from(messageLogs)
+        .where(eq(messageLogs.tenantId, id))
+        .orderBy(desc(messageLogs.createdAt))
+        .limit(50)
+
+      return reply.view('dashboard/views/modals/logs.ejs', {
+        logs,
+        tenantId: id,
       })
     },
   )

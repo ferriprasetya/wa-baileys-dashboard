@@ -1,7 +1,10 @@
+import { messageLogs } from '@/common/schema.js'
 import { Worker, Job } from 'bullmq'
+import { eq } from 'drizzle-orm'
 import { FastifyInstance } from 'fastify'
 
 interface SendMessageData {
+  logId: string
   tenantId: string
   to: string
   message: string
@@ -25,7 +28,7 @@ export const initWorker = (fastify: FastifyInstance) => {
   const worker = new Worker<SendMessageData>(
     'wa-sending-queue',
     async (job: Job<SendMessageData>) => {
-      const { tenantId, to, message } = job.data
+      const { tenantId, to, message, logId } = job.data
 
       fastify.log.info(`[Worker] Processing Job ${job.id} for Tenant ${tenantId}`)
 
@@ -66,6 +69,12 @@ export const initWorker = (fastify: FastifyInstance) => {
       // 4. Send Message
       // The sendMessage function returns a promise, we await it so the worker waits until it's sent
       await socket.sendMessage(jid, { text: message })
+
+      // 5. Update Log Status to SENT
+      await fastify.db
+        .update(messageLogs)
+        .set({ status: 'SENT', updatedAt: new Date(), error: null })
+        .where(eq(messageLogs.id, logId))
 
       fastify.log.info(`[Worker] Job ${job.id} COMPLETED. Message sent to ${to}`)
 
