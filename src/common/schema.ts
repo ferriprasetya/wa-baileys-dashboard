@@ -53,6 +53,20 @@ export const authCredits = pgTable(
   (table) => [primaryKey({ columns: [table.sessionId, table.key] })],
 )
 
+// Message logs table
+export const messageLogs = pgTable('message_logs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id')
+    .references(() => tenants.id, { onDelete: 'cascade' })
+    .notNull(),
+  to: varchar('to', { length: 50 }).notNull(),
+  content: text('content'), // Isi pesan
+  status: varchar('status', { length: 20 }).notNull(), // QUEUED, SENT, FAILED
+  error: text('error'), // Pesan error jika gagal
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+})
+
 // Relations for easier joins
 
 export const tenantsRelations = relations(tenants, ({ many }) => ({

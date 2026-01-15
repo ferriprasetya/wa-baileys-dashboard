@@ -1,6 +1,6 @@
 import fp from 'fastify-plugin'
 import { ConnectionManager } from './connection.js'
-import { sessions, tenants } from '@/common/schema.js'
+import { messageLogs, sessions, tenants } from '@/common/schema.js'
 import { FastifyRequest } from 'fastify'
 import QRCode from 'qrcode'
 import { Type } from '@sinclair/typebox'
@@ -188,8 +188,20 @@ export default fp(async (fastify: FastifyTypebox) => {
         return reply.status(401).send({ error: 'Invalid API Key' })
       }
 
+      // INSERT LOG (Status: QUEUED)
+      const [log] = await fastify.db
+        .insert(messageLogs)
+        .values({
+          tenantId,
+          to,
+          content: message,
+          status: 'QUEUED',
+        })
+        .returning()
+
       // QUEUE LOGIC
       const job = await messageQueue.add('send-text', {
+        logId: log.id,
         tenantId,
         to,
         message,
