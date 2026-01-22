@@ -46,9 +46,6 @@ tmp/
 temp/
 *.tmp
 
-# Drizzle - Ignore meta but KEEP migrations
-drizzle/meta/
-
 # Redis data
 dump.rdb
 
