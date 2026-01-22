@@ -1,8 +1,10 @@
 services:
   app:
+    restart: always
     volumes:
       - ./secret-key:/app/secret-key
-    restart: always
+    # run migration before start app
+    command: sh -c "npm run db:migrate && node dist/server.js"
 
   postgres:
     restart: always

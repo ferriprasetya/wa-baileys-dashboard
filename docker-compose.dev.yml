@@ -6,8 +6,6 @@ services:
       - /app/node_modules
       - ./secret-key:/app/secret-key
     command: npm run dev
-    ports:
-      - '3000:3000'
 
   postgres:
     ports:
