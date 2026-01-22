@@ -6,13 +6,7 @@ services:
     restart: unless-stopped
     ports:
       - '3000:3000'
-    environment:
-      - NODE_ENV=development
-      - PORT=3000
-      # Use service names as hostnames
-      - DATABASE_URL=postgres://user:password@postgres:5432/wa_gateway
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+    env_file: .env
     volumes:
       # Bind mount source code for hot reload
       - .:/app
