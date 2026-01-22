@@ -7,18 +7,13 @@ services:
     ports:
       - '3000:3000'
     env_file: .env
-    volumes:
-      # Bind mount source code for hot reload
-      - .:/app
-      # Avoid overwriting container's node_modules
-      - /app/node_modules
-      # Ensure the secret-key file is generated before starting the container, follow instruction in README.md
-      - ./secret-key:/app/secret-key
     depends_on:
-      - postgres
-      - redis
-    # Dev mode command (ensure tsx is in package.json)
-    command: node dist/server.js
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - wa-network
 
   # PostgreSQL Database
   postgres:
@@ -26,24 +21,38 @@ services:
     container_name: wa-gateway-db
     restart: always
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: wa_gateway
-    ports:
-      - '5432:5432' # Expose to host for GUI DB access
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-wa_gateway}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-user}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wa-network
 
   # Redis Queue
   redis:
     image: redis:7-alpine
     container_name: wa-gateway-redis
     restart: always
-    ports:
-      - '6379:6379' # Expose to host for debugging
     volumes:
       - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wa-network
 
 volumes:
   pgdata:
   redisdata:
+
+networks:
+  wa-network:
+    driver: bridge

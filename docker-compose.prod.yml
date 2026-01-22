@@ -1,0 +1,15 @@
+services:
+  app:
+    volumes:
+      - ./secret-key:/app/secret-key
+    restart: always
+
+  postgres:
+    restart: always
+    ports: []
+    env_file:
+      - .env
+
+  redis:
+    restart: always
+    ports: []
