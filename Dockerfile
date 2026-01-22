@@ -1,9 +1,8 @@
 # --- Stage 1: Build ---
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Install dependencies (including devDependencies for build)
 COPY package.json package-lock.json ./
 RUN npm ci
 
@@ -12,7 +11,7 @@ COPY . .
 RUN npm run build
 
 # --- Stage 2: Production ---
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
 
 WORKDIR /app
 
@@ -22,13 +21,14 @@ RUN npm ci --only=production
 
 # Copy build result from stage 1
 COPY --from=builder /app/dist ./dist
-# Copy public folder & views if any
-COPY --from=builder /app/src/modules/dashboard/views ./dist/modules/dashboard/views
-COPY --from=builder /app/public ./public
+# Copy migration files (penting!)
+COPY --from=builder /app/drizzle ./drizzle
+COPY --from=builder /app/drizzle.config.ts ./
 
 ENV NODE_ENV=production
 ENV PORT=3000
 
 EXPOSE 3000
 
-CMD ["node", "dist/server.js"]
+# Run migrations, then start app
+CMD ["sh", "-c", "npm run db:migrate && node dist/server.js"]

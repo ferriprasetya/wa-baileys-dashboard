@@ -18,7 +18,7 @@ services:
       - postgres
       - redis
     # Dev mode command (ensure tsx is in package.json)
-    command: npm run dev
+    command: node dist/server.js
 
   # PostgreSQL Database
   postgres:
