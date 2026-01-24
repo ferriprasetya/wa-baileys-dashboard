@@ -398,7 +398,9 @@ class WhatsAppSessionClient {
   private attemptReconnect(): void {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++
-      console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+      console.log(
+        `Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
+      )
       setTimeout(() => this.connect(), this.reconnectDelay)
     } else {
       console.error('Max reconnection attempts reached')
@@ -425,7 +427,7 @@ class WhatsAppSessionClient {
 // Usage example
 const client = new WhatsAppSessionClient(
   '01baba0d-a4cf-4cff-a5b4-5f5450699579',
-  '7e60eeffcdc7d96ed9c1fc3a57e80753942696139dc45b91af1251d07b47c367'
+  '7e60eeffcdc7d96ed9c1fc3a57e80753942696139dc45b91af1251d07b47c367',
 )
 
 client.onConnect = () => {

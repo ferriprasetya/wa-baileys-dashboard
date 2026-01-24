@@ -18,6 +18,19 @@ const randomDelay = (min: number, max: number) => {
 // Helper to sleep for given milliseconds
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+// Helper function to process message formatting
+const processMessageFormatting = (message: string): string => {
+  return message
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t')
+    .replace(/\\b/g, '\b')
+    .replace(/\\\*/g, '*')
+    .replace(/\\_/g, '_')
+    .replace(/\\~/g, '~')
+    .replace(/\\`/g, '`')
+}
+
 export const initWorker = (fastify: FastifyInstance) => {
   const connection = {
     host: process.env.REDIS_HOST || 'localhost',
@@ -68,7 +81,8 @@ export const initWorker = (fastify: FastifyInstance) => {
 
       // 4. Send Message
       // The sendMessage function returns a promise, we await it so the worker waits until it's sent
-      await socket.sendMessage(jid, { text: message })
+      const formattedMessage = processMessageFormatting(message)
+      await socket.sendMessage(jid, { text: formattedMessage })
 
       // 5. Update Log Status to SENT
       await fastify.db
