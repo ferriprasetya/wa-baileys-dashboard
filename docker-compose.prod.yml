@@ -4,7 +4,7 @@ services:
     volumes:
       - ./secret-key:/app/secret-key
     # run migration before start app
-    command: sh -c "npm run db:migrate && node dist/server.js"
+    command: sh -c "node dist/server.js"
 
   postgres:
     restart: always
