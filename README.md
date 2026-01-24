@@ -131,13 +131,28 @@ Access the dashboard at `http://localhost:3000`.
 
 ## 📜 Available Scripts
 
+### Development
+
 - `npm run dev` - Start development server with tsx watch
 - `npm run build` - Compile TypeScript to `dist/`
 - `npm start` - Run production build
 - `npm run format` - Format code using Prettier & ESLint
+
+### Database
+
 - `npm run db:generate` - Generate SQL migrations from Drizzle schema
 - `npm run db:migrate` - Apply migrations to the database
 - `npm run db:seed` - Seed initial data (admin user)
+
+### Docker
+
+- `npm run docker:dev` - Start development environment with Docker Compose
+- `npm run docker:dev:down` - Stop development environment
+- `npm run docker:dev:logs` - View logs from development container
+- `npm run docker:prod` - Start production environment with Docker Compose
+- `npm run docker:prod:down` - Stop production environment
+- `npm run docker:prod:logs` - View logs from production container
+- `npm run docker:prod:seed` - Run seeder in production container
 
 ## 🐳 Docker Production
 
@@ -154,6 +169,238 @@ To run the full application (App + DB + Redis) in a production simulation:
 ```bash
 docker compose up --build
 ```
+
+### Database Migrations & Seeding
+
+After starting the production environment, run migrations and seed the database:
+
+```bash
+# Apply database migrations
+npm run docker:prod:migrate
+
+# Seed initial data (creates default admin user)
+npm run docker:prod:seed
+```
+
+Or manually inside the running container:
+
+```bash
+docker compose exec app npm run db:migrate
+docker compose exec app npm run db:seed
+```
+
+## � Integration Guide
+
+This section explains how to integrate the WhatsApp Gateway with external services (e.g., Nuxt applications, microservices, etc.).
+
+### REST API: Send Message
+
+Send messages to WhatsApp via HTTP POST request.
+
+**Endpoint:** `POST /public/api/send`
+
+**Getting Credentials:**
+
+1. Log in to the dashboard at `http://localhost:3000`
+2. Navigate to the **Tenant List** section
+3. Click the **"View Credentials"** button on the desired tenant
+4. Copy the `Tenant ID` and `API Key` from the modal dialog
+
+**Request Body:**
+
+```json
+{
+  "tenantId": "YOUR_TENANT_ID_HERE",
+  "apiKey": "YOUR_API_KEY_HERE",
+  "to": "628123456789",
+  "message": "Your message here with optional formatting"
+}
+```
+
+**Request Body Parameters:**
+
+| Parameter  | Type   | Description                                       |
+| :--------- | :----- | :------------------------------------------------ |
+| `tenantId` | string | Unique identifier for the WhatsApp tenant/session |
+| `apiKey`   | string | API key for authenticating the request            |
+| `to`       | string | Recipient phone number (format: 628xxx...)        |
+| `message`  | string | Message content (supports formatting)             |
+
+**Request Headers:**
+
+```
+Content-Type: application/json
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "status": "queued",
+  "jobId": "12345",
+  "queuePosition": 5
+}
+```
+
+**Response (404 Not Found):**
+
+```json
+{
+  "error": "Tenant not found"
+}
+```
+
+**Response (401 Unauthorized):**
+
+```json
+{
+  "error": "Invalid API Key"
+}
+```
+
+**Message Formatting Support:**
+
+WhatsApp supports the following text formatting:
+
+- `*text*` → **bold**
+- `_text_` → _italic_
+- `~text~` → ~~strikethrough~~
+- `` `text` `` → `monospace`
+- `\n` → newline
+
+**Example Request with Formatting:**
+
+```json
+{
+  "tenantId": "YOUR_TENANT_ID_HERE",
+  "apiKey": "YOUR_API_KEY_HERE",
+  "to": "628123456789",
+  "message": "*Notifikasi Penting*\n\nAnda memiliki tugas baru:\n_Submission Deadline: 2024-01-31_\n\nSilakan login untuk informasi lebih lanjut."
+}
+```
+
+### WebSocket: Real-time Session Connection
+
+Connect to WhatsApp sessions in real-time using WebSocket to receive QR codes and connection status updates.
+
+**Endpoint:** `WS /public/tenants/:tenantId/ws?apiKey=YOUR_API_KEY`
+
+**Connection Example (JavaScript):**
+
+```javascript
+const tenantId = '01baba0d-a4cf-4cff-a5b4-5f5450699579'
+const apiKey = '7e60eeffcdc7d96ed9c1fc3a57e80753942696139dc45b91af1251d07b47c367'
+
+const ws = new WebSocket(`ws://localhost:3000/public/tenants/${tenantId}/ws?apiKey=${apiKey}`)
+
+ws.onopen = () => {
+  console.log('Connected to WhatsApp session')
+}
+
+ws.onmessage = (event) => {
+  const message = JSON.parse(event.data)
+
+  switch (message.type) {
+    case 'qr':
+      // Display QR code for scanning
+      console.log('QR Code:', message.data)
+      displayQRCode(message.data)
+      break
+
+    case 'ready':
+      // Session is connected
+      console.log('WhatsApp connected as:', message.jid)
+      updateStatus('connected', message.jid)
+      break
+
+    case 'close':
+      // Session disconnected
+      console.log('WhatsApp session closed')
+      updateStatus('disconnected')
+      break
+  }
+}
+
+ws.onerror = (error) => {
+  console.error('WebSocket error:', error)
+}
+
+ws.onclose = () => {
+  console.log('Connection closed')
+}
+```
+
+**Connection Example (Vue 3 + Pinia):**
+
+```typescript
+import { defineStore } from 'pinia'
+
+let socket: WebSocket | null = null
+
+export const useWhatsappStore = defineStore('whatsapp', () => {
+  const createWebSocketClient = (tenantId: string, apiKey: string): WebSocket => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${protocol}//${window.location.host}/public/tenants/${tenantId}/ws?apiKey=${apiKey}`
+    return new WebSocket(wsUrl)
+  }
+
+  const connect = (tenantId: string, apiKey: string) => {
+    if (socket && socket.readyState === WebSocket.OPEN) return
+
+    socket = createWebSocketClient(tenantId, apiKey)
+
+    socket.onmessage = (event) => {
+      const msg = JSON.parse(event.data)
+
+      if (msg.type === 'qr') {
+        console.log('QR Code received:', msg.data)
+        // Display QR code to user
+      } else if (msg.type === 'ready') {
+        console.log('Session connected:', msg.jid)
+        // Update UI to show connected status
+      } else if (msg.type === 'close') {
+        console.log('Session closed')
+        // Update UI to show disconnected status
+      }
+    }
+
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error)
+    }
+
+    socket.onclose = () => {
+      console.log('WebSocket closed')
+      socket = null
+    }
+  }
+
+  const disconnect = () => {
+    if (socket) {
+      socket.close()
+      socket = null
+    }
+  }
+
+  return {
+    connect,
+    disconnect,
+  }
+})
+```
+
+**WebSocket Message Types:**
+
+| Type    | Description          | Payload                                        |
+| :------ | :------------------- | :--------------------------------------------- |
+| `qr`    | QR code generated    | `{ type: 'qr', data: '...' }` (base64 image)   |
+| `ready` | Session connected    | `{ type: 'ready', jid: '...' }` (WhatsApp JID) |
+| `close` | Session disconnected | `{ type: 'close' }`                            |
+
+**Connection States:**
+
+- **Awaiting QR Scan:** Client receives `qr` message with QR code image. User scans with WhatsApp to authenticate.
+- **Connected:** After successful scan, client receives `ready` message with WhatsApp JID (phone number).
+- **Auto-reconnect on Disconnect:** If connection is interrupted, client can manually reconnect by re-establishing WebSocket.
 
 ## 📝 License
 

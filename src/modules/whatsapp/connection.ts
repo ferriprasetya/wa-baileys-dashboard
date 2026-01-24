@@ -11,6 +11,7 @@ export class ConnectionManager extends EventEmitter {
   private db: FastifyDatabase
   private logger: FastifyBaseLogger
   private sockets: Map<string, WASocket> = new Map()
+  private states: Map<string, { state: string; jid?: string }> = new Map()
 
   constructor(db: FastifyDatabase, logger: FastifyBaseLogger) {
     super()
@@ -21,6 +22,16 @@ export class ConnectionManager extends EventEmitter {
   // Get socket instance
   getSocket(sessionId: string) {
     return this.sockets.get(sessionId)
+  }
+
+  // Get current state
+  getState(sessionId: string) {
+    return this.states.get(sessionId)
+  }
+
+  // Set state
+  private setState(sessionId: string, state: string, jid?: string) {
+    this.states.set(sessionId, { state, jid })
   }
 
   // Start or restart session
@@ -52,12 +63,14 @@ export class ConnectionManager extends EventEmitter {
 
       if (qr) {
         this.logger.debug(`[WA] QR Generated for ${sessionId}`)
+        this.setState(sessionId, 'SCANNING')
         await this.updateStatus(sessionId, 'SCANNING')
         this.emit('qr', sessionId, qr)
       }
 
       if (connection === 'open') {
         const userJid = sock.user?.id
+        this.setState(sessionId, 'CONNECTED', userJid)
         await this.db
           .update(sessions)
           .set({
@@ -76,12 +89,14 @@ export class ConnectionManager extends EventEmitter {
 
         if (shouldReconnect) {
           this.logger.warn(`[WA] Session ${sessionId} disconnected. Reconnecting...`)
+          this.setState(sessionId, 'RECONNECTING')
           await this.updateStatus(sessionId, 'RECONNECTING')
           this.start(sessionId)
         } else {
           this.logger.info(`[WA] Session ${sessionId} logged out. Cleaning up DB...`)
           await this.handleLogout(sessionId)
           this.sockets.delete(sessionId)
+          this.states.delete(sessionId)
         }
       }
     })

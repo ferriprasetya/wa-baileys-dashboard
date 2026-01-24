@@ -124,13 +124,24 @@ export default fp(async (fastify: FastifyTypebox) => {
       fastify.wa.on('ready', onReady)
       fastify.wa.on('close', onClose)
 
-      // Start session
-      const existingSocket = fastify.wa.getSocket(sessionId)
-      if (!existingSocket) {
-        try {
-          await fastify.wa.start(sessionId)
-        } catch (error) {
-          fastify.log.error(error)
+      // CHECK CURRENT STATE and send to client immediately
+      const currentState = fastify.wa.getState(sessionId)
+
+      if (currentState?.state === 'CONNECTED' && currentState?.jid) {
+        fastify.log.info(`[WS] Session ${sessionId} already connected, sending JID to client`)
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: 'ready', jid: currentState.jid }))
+        }
+      } else {
+        fastify.log.info(`[WS] Session ${sessionId} not connected yet, starting...`)
+        // Start session
+        const existingSocket = fastify.wa.getSocket(sessionId)
+        if (!existingSocket) {
+          try {
+            await fastify.wa.start(sessionId)
+          } catch (error) {
+            fastify.log.error(error, `[WS] Failed to start session ${sessionId}`)
+          }
         }
       }
 
