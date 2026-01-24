@@ -330,62 +330,137 @@ ws.onclose = () => {
 }
 ```
 
-**Connection Example (Vue 3 + Pinia):**
+**Connection Example (TypeScript):**
 
 ```typescript
-import { defineStore } from 'pinia'
+class WhatsAppSessionClient {
+  private socket: WebSocket | null = null
+  private tenantId: string
+  private apiKey: string
+  private reconnectAttempts = 0
+  private maxReconnectAttempts = 5
+  private reconnectDelay = 3000
 
-let socket: WebSocket | null = null
-
-export const useWhatsappStore = defineStore('whatsapp', () => {
-  const createWebSocketClient = (tenantId: string, apiKey: string): WebSocket => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/public/tenants/${tenantId}/ws?apiKey=${apiKey}`
-    return new WebSocket(wsUrl)
+  constructor(tenantId: string, apiKey: string) {
+    this.tenantId = tenantId
+    this.apiKey = apiKey
   }
 
-  const connect = (tenantId: string, apiKey: string) => {
-    if (socket && socket.readyState === WebSocket.OPEN) return
+  connect(): void {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      console.warn('Already connected')
+      return
+    }
 
-    socket = createWebSocketClient(tenantId, apiKey)
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${protocol}//${window.location.host}/public/tenants/${this.tenantId}/ws?apiKey=${this.apiKey}`
 
-    socket.onmessage = (event) => {
-      const msg = JSON.parse(event.data)
+    this.socket = new WebSocket(wsUrl)
 
-      if (msg.type === 'qr') {
-        console.log('QR Code received:', msg.data)
-        // Display QR code to user
-      } else if (msg.type === 'ready') {
-        console.log('Session connected:', msg.jid)
-        // Update UI to show connected status
-      } else if (msg.type === 'close') {
-        console.log('Session closed')
-        // Update UI to show disconnected status
+    this.socket.onopen = () => {
+      console.log('Connected to WhatsApp session')
+      this.reconnectAttempts = 0 // Reset on successful connection
+      this.onConnect?.()
+    }
+
+    this.socket.onmessage = (event) => {
+      const message = JSON.parse(event.data)
+
+      switch (message.type) {
+        case 'qr':
+          console.log('QR Code received')
+          this.onQRCode?.(message.data)
+          break
+
+        case 'ready':
+          console.log('WhatsApp session connected:', message.jid)
+          this.onReady?.(message.jid)
+          break
+
+        case 'close':
+          console.log('WhatsApp session closed')
+          this.onClose?.()
+          break
       }
     }
 
-    socket.onerror = (error) => {
+    this.socket.onerror = (error) => {
       console.error('WebSocket error:', error)
+      this.onError?.(error)
     }
 
-    socket.onclose = () => {
+    this.socket.onclose = () => {
       console.log('WebSocket closed')
-      socket = null
+      this.attemptReconnect()
     }
   }
 
-  const disconnect = () => {
-    if (socket) {
-      socket.close()
-      socket = null
+  private attemptReconnect(): void {
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.reconnectAttempts++
+      console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+      setTimeout(() => this.connect(), this.reconnectDelay)
+    } else {
+      console.error('Max reconnection attempts reached')
+      this.onMaxReconnectReached?.()
     }
   }
 
-  return {
-    connect,
-    disconnect,
+  disconnect(): void {
+    if (this.socket) {
+      this.socket.close()
+      this.socket = null
+    }
   }
-})
+
+  // Event handlers (override these in your code)
+  onConnect?: () => void
+  onQRCode?: (qrImage: string) => void
+  onReady?: (jid: string) => void
+  onClose?: () => void
+  onError?: (error: Event) => void
+  onMaxReconnectReached?: () => void
+}
+
+// Usage example
+const client = new WhatsAppSessionClient(
+  '01baba0d-a4cf-4cff-a5b4-5f5450699579',
+  '7e60eeffcdc7d96ed9c1fc3a57e80753942696139dc45b91af1251d07b47c367'
+)
+
+client.onConnect = () => {
+  console.log('Ready to receive events')
+}
+
+client.onQRCode = (qrImage: string) => {
+  // Display QR code to user
+  const img = document.getElementById('qr-code') as HTMLImageElement
+  if (img) {
+    img.src = qrImage
+    img.style.display = 'block'
+  }
+}
+
+client.onReady = (jid: string) => {
+  console.log('Session connected as:', jid)
+  // Hide QR code and show success
+  const img = document.getElementById('qr-code') as HTMLImageElement
+  if (img) img.style.display = 'none'
+}
+
+client.onClose = () => {
+  console.log('Session disconnected')
+}
+
+client.onError = (error: Event) => {
+  console.error('Connection error:', error)
+}
+
+// Connect to session
+client.connect()
+
+// Disconnect when needed
+// client.disconnect()
 ```
 
 **WebSocket Message Types:**
