@@ -1,11 +1,22 @@
+# docker-compose.dev.yml
 services:
   app:
+    build:
+      context: .
+      target: builder
+    environment:
+      NODE_ENV: development
     volumes:
-      # Hot reload for development
       - .:/app
       - /app/node_modules
       - ./secret-key:/app/secret-key
     command: npm run dev
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1G
 
   postgres:
     ports:

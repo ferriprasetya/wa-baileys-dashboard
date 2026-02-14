@@ -1,17 +1,7 @@
 services:
   app:
-    restart: always
+    environment:
+      NODE_ENV: production
     volumes:
+      # Mapping folder sesi WA dari Host ke Container
       - ./secret-key:/app/secret-key
-    # run migration before start app
-    command: sh -c "node dist/server.js"
-
-  postgres:
-    restart: always
-    ports: []
-    env_file:
-      - .env
-
-  redis:
-    restart: always
-    ports: []
