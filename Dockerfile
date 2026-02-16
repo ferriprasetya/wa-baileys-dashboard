@@ -1,10 +1,10 @@
 # --- Stage 1: Builder ---
-FROM node:20-bullseye-slim AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 # Install build tools (WAJIB untuk argon2 & baileys)
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache python3 make g++
 
 COPY package.json package-lock.json ./
 
@@ -20,12 +20,11 @@ RUN npm run build
 RUN npm prune --production
 
 # --- Stage 2: Production Runner ---
-FROM node:20-bullseye-slim
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Install openssl (dibutuhkan Drizzle/Prisma) & netcat (untuk healthcheck script)
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache openssl libstdc++
 
 # Copy node_modules yang sudah bersih dari builder
 COPY --from=builder /app/node_modules ./node_modules
