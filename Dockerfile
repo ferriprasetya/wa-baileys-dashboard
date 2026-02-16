@@ -16,9 +16,6 @@ COPY . .
 # Build TypeScript ke folder dist/
 RUN npm run build
 
-# Bersihkan dev dependencies, TAPI biarkan dependencies 'prod' (tsx, drizzle-kit, argon2)
-RUN npm prune --production
-
 # --- Stage 2: Production Runner ---
 FROM node:20-alpine
 
