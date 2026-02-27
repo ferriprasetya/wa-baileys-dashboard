@@ -31,12 +31,35 @@ export default fp(async (fastify: FastifyTypebox) => {
     fastify.log.info('[WA] Resuming active sessions...')
 
     const activeSessions = await fastify.db.select().from(sessions)
+    fastify.log.info(`[WA] Found ${activeSessions.length} active sessions in database`)
+
+    if (activeSessions.length === 0) {
+      fastify.log.info('[WA] No active sessions to resume')
+      return
+    }
 
     for (const session of activeSessions) {
       try {
+        // VALIDATION: Check if tenant still exists
+        const [tenant] = await fastify.db
+          .select()
+          .from(tenants)
+          .where(eq(tenants.id, session.tenantId))
+          .limit(1)
+
+        if (!tenant) {
+          fastify.log.warn(
+            `[WA] Tenant ${session.tenantId} not found, skipping resume for session ${session.sessionId}`,
+          )
+          // Clean up orphaned session
+          await waManager.deleteSession(session.sessionId)
+          continue
+        }
+
+        fastify.log.info(`[WA] Resuming session ${session.sessionId}...`)
         waManager.start(session.sessionId)
       } catch (err) {
-        fastify.log.error(err as Error, `[WA] Failed to resume session ${session.sessionId}:`)
+        fastify.log.error(err as Error, `[WA] Failed to resume session ${session.sessionId}`)
       }
     }
   })
@@ -134,13 +157,29 @@ export default fp(async (fastify: FastifyTypebox) => {
         }
       } else {
         fastify.log.info(`[WS] Session ${sessionId} not connected yet, starting...`)
-        // Start session
+        
+        // VALIDATION: Check if session exists in database before starting
+        const [existingSession] = await fastify.db
+          .select()
+          .from(sessions)
+          .where(eq(sessions.sessionId, sessionId))
+          .limit(1)
+
+        if (!existingSession) {
+          fastify.log.warn(`[WS] Session ${sessionId} not found in database, rejecting connection`)
+          socket.close(1008, 'Invalid Session')
+          return
+        }
+
+        // Start session only if socket doesn't exist
         const existingSocket = fastify.wa.getSocket(sessionId)
         if (!existingSocket) {
           try {
             await fastify.wa.start(sessionId)
           } catch (error) {
             fastify.log.error(error, `[WS] Failed to start session ${sessionId}`)
+            socket.close(1011, 'Failed to start session')
+            return
           }
         }
       }

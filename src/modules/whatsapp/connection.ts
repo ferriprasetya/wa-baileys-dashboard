@@ -88,6 +88,20 @@ export class ConnectionManager extends EventEmitter {
         this.emit('close', sessionId, shouldReconnect)
 
         if (shouldReconnect) {
+          // VALIDATION: Check if session/tenant still exists before reconnecting
+          const [session] = await this.db
+            .select()
+            .from(sessions)
+            .where(eq(sessions.sessionId, sessionId))
+            .limit(1)
+
+          if (!session) {
+            this.logger.warn(`[WA] Session ${sessionId} not found in DB, stopping reconnect`)
+            this.sockets.delete(sessionId)
+            this.states.delete(sessionId)
+            return
+          }
+
           this.logger.warn(`[WA] Session ${sessionId} disconnected. Reconnecting...`)
           this.setState(sessionId, 'RECONNECTING')
           await this.updateStatus(sessionId, 'RECONNECTING')
