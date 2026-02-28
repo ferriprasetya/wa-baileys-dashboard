@@ -1,4 +1,4 @@
-import { makeWASocket, DisconnectReason, Browsers, WASocket } from '@whiskeysockets/baileys'
+import { makeWASocket, DisconnectReason, Browsers, WASocket, fetchLatestWaWebVersion } from '@whiskeysockets/baileys'
 import { Boom } from '@hapi/boom'
 import { sessions, authCredits } from '@/common/schema.js'
 import { eq } from 'drizzle-orm'
@@ -38,9 +38,11 @@ export class ConnectionManager extends EventEmitter {
   async start(sessionId: string) {
     // Load auth credentials from database
     const { state, saveCreds } = await usePostgresAuthState(this.db, sessionId)
+    const { version } = await fetchLatestWaWebVersion()
 
     // Initialize WhatsApp socket
     const sock = makeWASocket({
+      version,
       auth: state,
       printQRInTerminal: process.env.WA_PRINT_QR_TERMINAL === 'true' || false,
       logger: this.logger,
