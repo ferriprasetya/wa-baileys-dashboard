@@ -1,4 +1,12 @@
-import { makeWASocket, DisconnectReason, Browsers, WASocket, fetchLatestWaWebVersion } from '@whiskeysockets/baileys'
+import {
+  makeWASocket,
+  DisconnectReason,
+  Browsers,
+  WASocket,
+  WAVersion,
+  fetchLatestWaWebVersion,
+  fetchLatestBaileysVersion,
+} from '@whiskeysockets/baileys'
 import { Boom } from '@hapi/boom'
 import { sessions, authCredits } from '@/common/schema.js'
 import { eq } from 'drizzle-orm'
@@ -12,6 +20,17 @@ export class ConnectionManager extends EventEmitter {
   private logger: FastifyBaseLogger
   private sockets: Map<string, WASocket> = new Map()
   private states: Map<string, { state: string; jid?: string }> = new Map()
+
+  // Cache WA version — fetch once, reuse on every reconnect
+  private waVersion: WAVersion | null = null
+
+  // Track reconnect attempts per session for exponential backoff
+  private reconnectAttempts: Map<string, number> = new Map()
+  // Pending reconnect timers — cleared on successful connect or new disconnect
+  private reconnectTimers: Map<string, NodeJS.Timeout> = new Map()
+
+  // Last QR string per session — sent immediately to newly connected WS clients
+  private lastQr: Map<string, string> = new Map()
 
   constructor(db: FastifyDatabase, logger: FastifyBaseLogger) {
     super()
@@ -29,16 +48,48 @@ export class ConnectionManager extends EventEmitter {
     return this.states.get(sessionId)
   }
 
+  // Get last QR string — used to push QR immediately to newly connected WS clients
+  getLastQr(sessionId: string): string | undefined {
+    return this.lastQr.get(sessionId)
+  }
+
   // Set state
   private setState(sessionId: string, state: string, jid?: string) {
     this.states.set(sessionId, { state, jid })
   }
 
+  // Fetch and cache WA version. Falls back to bundled Baileys version on error.
+  private async getWaVersion(): Promise<WAVersion> {
+    if (this.waVersion) return this.waVersion
+
+    try {
+      const { version, isLatest } = await fetchLatestWaWebVersion()
+      this.waVersion = version
+      this.logger.info(`[WA] Using WA Web version ${version.join('.')} (isLatest=${isLatest})`)
+    } catch (err) {
+      this.logger.warn('[WA] fetchLatestWaWebVersion failed, falling back to bundled version')
+      const { version } = await fetchLatestBaileysVersion()
+      this.waVersion = version
+    }
+
+    return this.waVersion!
+  }
+
   // Start or restart session
   async start(sessionId: string) {
+    // --- Cleanup existing socket before creating a new one ---
+    const existingSock = this.sockets.get(sessionId)
+    if (existingSock) {
+      this.logger.debug(`[WA] Closing existing socket for ${sessionId} before restart`)
+      existingSock.end(new Error('session_restart'))
+      this.sockets.delete(sessionId)
+    }
+
     // Load auth credentials from database
     const { state, saveCreds } = await usePostgresAuthState(this.db, sessionId)
-    const { version } = await fetchLatestWaWebVersion()
+
+    // Use cached version — avoids a slow HTTP fetch on every reconnect
+    const version = await this.getWaVersion()
 
     // Initialize WhatsApp socket
     const sock = makeWASocket({
@@ -65,6 +116,8 @@ export class ConnectionManager extends EventEmitter {
 
       if (qr) {
         this.logger.debug(`[WA] QR Generated for ${sessionId}`)
+        // Cache QR string so new WS clients get it immediately
+        this.lastQr.set(sessionId, qr)
         this.setState(sessionId, 'SCANNING')
         await this.updateStatus(sessionId, 'SCANNING')
         this.emit('qr', sessionId, qr)
@@ -72,6 +125,14 @@ export class ConnectionManager extends EventEmitter {
 
       if (connection === 'open') {
         const userJid = sock.user?.id
+
+        // Reset reconnect state on successful connection
+        this.reconnectAttempts.delete(sessionId)
+        this._clearReconnectTimer(sessionId)
+
+        // Clear cached QR — no longer needed once connected
+        this.lastQr.delete(sessionId)
+
         this.setState(sessionId, 'CONNECTED', userJid)
         await this.db
           .update(sessions)
@@ -85,8 +146,9 @@ export class ConnectionManager extends EventEmitter {
         this.logger.info(`[WA] Session ${sessionId} connected as ${userJid}`)
         this.emit('ready', sessionId, userJid)
       } else if (connection === 'close') {
-        const shouldReconnect =
-          (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut
+        const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut
+
         this.emit('close', sessionId, shouldReconnect)
 
         if (shouldReconnect) {
@@ -101,21 +163,52 @@ export class ConnectionManager extends EventEmitter {
             this.logger.warn(`[WA] Session ${sessionId} not found in DB, stopping reconnect`)
             this.sockets.delete(sessionId)
             this.states.delete(sessionId)
+            this.lastQr.delete(sessionId)
             return
           }
 
-          this.logger.warn(`[WA] Session ${sessionId} disconnected. Reconnecting...`)
+          // Cancel any pending reconnect timer before scheduling a new one
+          this._clearReconnectTimer(sessionId)
+
+          const attempt = (this.reconnectAttempts.get(sessionId) || 0) + 1
+          // Exponential backoff: 2s → 4s → 8s → 16s → max 30s
+          const delay = Math.min(2000 * Math.pow(2, attempt - 1), 30000)
+
+          this.reconnectAttempts.set(sessionId, attempt)
           this.setState(sessionId, 'RECONNECTING')
           await this.updateStatus(sessionId, 'RECONNECTING')
-          this.start(sessionId)
+
+          this.logger.warn(
+            `[WA] Session ${sessionId} disconnected (code=${statusCode}). ` +
+              `Reconnecting in ${delay}ms (attempt #${attempt})...`,
+          )
+
+          const timer = setTimeout(() => {
+            this.reconnectTimers.delete(sessionId)
+            this.start(sessionId)
+          }, delay)
+
+          this.reconnectTimers.set(sessionId, timer)
         } else {
           this.logger.info(`[WA] Session ${sessionId} logged out. Cleaning up DB...`)
           await this.handleLogout(sessionId)
           this.sockets.delete(sessionId)
           this.states.delete(sessionId)
+          this.lastQr.delete(sessionId)
+          this.reconnectAttempts.delete(sessionId)
+          this._clearReconnectTimer(sessionId)
         }
       }
     })
+  }
+
+  // Clear a pending reconnect timer if one exists
+  private _clearReconnectTimer(sessionId: string) {
+    const timer = this.reconnectTimers.get(sessionId)
+    if (timer) {
+      clearTimeout(timer)
+      this.reconnectTimers.delete(sessionId)
+    }
   }
 
   // Clean up session data on logout
@@ -139,9 +232,14 @@ export class ConnectionManager extends EventEmitter {
 
   // Disconnect session manually
   async deleteSession(sessionId: string) {
+    // Cancel pending reconnect before deleting
+    this._clearReconnectTimer(sessionId)
+    this.reconnectAttempts.delete(sessionId)
+    this.lastQr.delete(sessionId)
+
     const sock = this.sockets.get(sessionId)
     if (sock) {
-      sock.end(undefined)
+      sock.end(new Error('session_deleted'))
       this.sockets.delete(sessionId)
     }
     await this.handleLogout(sessionId)

@@ -114,7 +114,7 @@ export default fp(async (fastify: FastifyTypebox) => {
 
       fastify.log.info(`[WS] Client authenticated for session ${sessionId}`)
 
-      // Event listener functions
+      // --- Event listener functions ---
       const onQr = async (id: string, qrString: string) => {
         if (id !== sessionId) return
 
@@ -142,23 +142,38 @@ export default fp(async (fastify: FastifyTypebox) => {
         }
       }
 
-      // Register event listeners
+      // Register event listeners FIRST — so no events are missed while we
+      // inspect the current state below
       fastify.wa.on('qr', onQr)
       fastify.wa.on('ready', onReady)
       fastify.wa.on('close', onClose)
 
-      // CHECK CURRENT STATE and send to client immediately
+      // --- Push current state immediately to the newly connected client ---
       const currentState = fastify.wa.getState(sessionId)
 
       if (currentState?.state === 'CONNECTED' && currentState?.jid) {
+        // Already connected — send JID right away
         fastify.log.info(`[WS] Session ${sessionId} already connected, sending JID to client`)
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify({ type: 'ready', jid: currentState.jid }))
         }
+      } else if (currentState?.state === 'SCANNING') {
+        // QR has already been generated — push the last QR so the client
+        // doesn't have to wait for the next Baileys QR cycle (~20s)
+        fastify.log.info(`[WS] Session ${sessionId} is SCANNING, pushing cached QR to client`)
+        const lastQr = fastify.wa.getLastQr(sessionId)
+        if (lastQr && socket.readyState === WebSocket.OPEN) {
+          try {
+            const qrImage = await QRCode.toDataURL(lastQr)
+            socket.send(JSON.stringify({ type: 'qr', data: qrImage }))
+          } catch (err) {
+            fastify.log.error(err, '[WS] Failed to generate QR from cache')
+          }
+        }
       } else {
-        fastify.log.info(`[WS] Session ${sessionId} not connected yet, starting...`)
-        
-        // VALIDATION: Check if session exists in database before starting
+        // Session not started yet — validate DB then start
+        fastify.log.info(`[WS] Session ${sessionId} not started, initialising...`)
+
         const [existingSession] = await fastify.db
           .select()
           .from(sessions)
@@ -167,24 +182,29 @@ export default fp(async (fastify: FastifyTypebox) => {
 
         if (!existingSession) {
           fastify.log.warn(`[WS] Session ${sessionId} not found in database, rejecting connection`)
+          fastify.wa.off('qr', onQr)
+          fastify.wa.off('ready', onReady)
+          fastify.wa.off('close', onClose)
           socket.close(1008, 'Invalid Session')
           return
         }
 
-        // Start session only if socket doesn't exist
-        const existingSocket = fastify.wa.getSocket(sessionId)
-        if (!existingSocket) {
+        // Start only if a socket isn't already present (e.g. mid-reconnect)
+        if (!fastify.wa.getSocket(sessionId)) {
           try {
             await fastify.wa.start(sessionId)
           } catch (error) {
             fastify.log.error(error, `[WS] Failed to start session ${sessionId}`)
+            fastify.wa.off('qr', onQr)
+            fastify.wa.off('ready', onReady)
+            fastify.wa.off('close', onClose)
             socket.close(1011, 'Failed to start session')
             return
           }
         }
       }
 
-      // Cleanup on disconnect
+      // Cleanup on WS client disconnect
       socket.on('close', () => {
         fastify.log.info(`[WS] Client disconnected for session ${sessionId}`)
         fastify.wa.off('qr', onQr)
