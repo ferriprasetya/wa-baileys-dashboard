@@ -65,13 +65,20 @@ export class EvolutionClient {
     }
   }
 
-  // Connect Instance (gets QR code or connection status)
+  // Connect Instance (gets fresh QR code or connection status)
   async connectInstance(instanceName: string): Promise<EvolutionConnectResponse> {
     this.logger?.debug(`[EvolutionAPI] Connecting instance: ${instanceName}`)
 
     try {
       const res = await this.httpClient.get<EvolutionConnectResponse>(
-        `/instance/connect/${encodeURIComponent(instanceName)}`,
+        `/instance/connect/${encodeURIComponent(instanceName)}?t=${Date.now()}`,
+        {
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            Pragma: 'no-cache',
+            Expires: '0',
+          },
+        },
       )
       return res.data
     } catch (err) {
@@ -80,6 +87,27 @@ export class EvolutionClient {
       }
       this.logger?.error(err as Error, `[EvolutionAPI] Failed to connect instance ${instanceName}`)
       throw err
+    }
+  }
+
+  // Restart Instance (forces Evolution API to re-initialize WhatsApp socket & generate new QR)
+  async restartInstance(instanceName: string): Promise<unknown> {
+    this.logger?.info(`[EvolutionAPI] Restarting instance: ${instanceName}`)
+
+    try {
+      const res = await this.httpClient.post(
+        `/instance/restart/${encodeURIComponent(instanceName)}`,
+        {},
+        {
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            Pragma: 'no-cache',
+          },
+        },
+      )
+      return res.data
+    } catch (err) {
+      this.logger?.warn(`[EvolutionAPI] Failed to restart instance ${instanceName}: ${err}`)
     }
   }
 

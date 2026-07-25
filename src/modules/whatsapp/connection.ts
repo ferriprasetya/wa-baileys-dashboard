@@ -61,8 +61,10 @@ export class ConnectionManager extends EventEmitter {
     return owner ? owner.split('@')[0] : sessionId
   }
 
-  // Request fresh QR Code from Evolution API and emit if available
-  async requestQrAndConnect(sessionId: string): Promise<boolean> {
+  // Request a guaranteed fresh QR code directly from Evolution API bypassing any local cache
+  async requestFreshQr(sessionId: string): Promise<string | null> {
+    this.lastQr.delete(sessionId)
+
     try {
       let connectRes = await this.client.connectInstance(sessionId)
 
@@ -80,22 +82,40 @@ export class ConnectionManager extends EventEmitter {
         await this.updateStatus(sessionId, 'CONNECTED', userJid)
         this.logger.info(`[ConnectionManager] Session ${sessionId} connected as ${userJid}`)
         this.emit('ready', sessionId, userJid)
-        return true
+        return null
       }
 
-      const qrString = connectRes.code || connectRes.base64
+      let qrString = connectRes.code || connectRes.base64
+
+      // If no QR code returned, attempt restarting instance to force socket initialization
+      if (!qrString) {
+        this.logger.info(
+          `[ConnectionManager] No QR code returned, restarting instance ${sessionId}...`,
+        )
+        await this.client.restartInstance(sessionId)
+        connectRes = await this.client.connectInstance(sessionId)
+        qrString = connectRes.code || connectRes.base64
+      }
+
       if (qrString) {
         this.logger.info(`[ConnectionManager] Fresh QR Code received for session ${sessionId}`)
         this.lastQr.set(sessionId, qrString)
         this.setState(sessionId, 'SCANNING')
         await this.updateStatus(sessionId, 'SCANNING')
         this.emit('qr', sessionId, qrString)
+        return qrString
       }
-      return false
+      return null
     } catch (err) {
-      this.logger.warn(`[ConnectionManager] Failed to request QR for ${sessionId}: ${err}`)
-      return false
+      this.logger.warn(`[ConnectionManager] Failed to request fresh QR for ${sessionId}: ${err}`)
+      return null
     }
+  }
+
+  // Request fresh QR Code from Evolution API and emit if available
+  async requestQrAndConnect(sessionId: string): Promise<boolean> {
+    await this.requestFreshQr(sessionId)
+    return this.getState(sessionId)?.state === 'CONNECTED'
   }
 
   // Sync all active sessions DB status with Evolution API in real-time
