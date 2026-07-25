@@ -162,4 +162,22 @@ export class EvolutionClient {
       throw err
     }
   }
+
+  // Fetch Instance Info & Owner Phone Number JID
+  async getInstanceOwner(instanceName: string): Promise<string | null> {
+    try {
+      const res = await this.httpClient.get<Array<{ owner?: string; instanceName?: string }>>(
+        `/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`,
+      )
+      if (Array.isArray(res.data) && res.data.length > 0) {
+        const owner = res.data[0].owner
+        if (owner) {
+          return owner.split('@')[0]
+        }
+      }
+    } catch (err) {
+      this.logger?.warn(`[EvolutionAPI] Failed to fetch instance owner for ${instanceName}: ${err}`)
+    }
+    return null
+  }
 }

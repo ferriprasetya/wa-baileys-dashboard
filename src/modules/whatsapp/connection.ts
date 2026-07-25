@@ -56,6 +56,11 @@ export class ConnectionManager extends EventEmitter {
     await this.db.update(sessions).set(updatePayload).where(eq(sessions.sessionId, sessionId))
   }
 
+  private async getOwnerNumber(sessionId: string): Promise<string> {
+    const owner = await this.client.getInstanceOwner(sessionId)
+    return owner ? owner.split('@')[0] : sessionId
+  }
+
   // Request fresh QR Code from Evolution API and emit if available
   async requestQrAndConnect(sessionId: string): Promise<boolean> {
     try {
@@ -69,11 +74,11 @@ export class ConnectionManager extends EventEmitter {
       }
 
       if (connectRes.instance?.state === 'open') {
-        const userJid = `${sessionId}@s.whatsapp.net`
+        const userJid = await this.getOwnerNumber(sessionId)
         this.setState(sessionId, 'CONNECTED', userJid)
         this.lastQr.delete(sessionId)
         await this.updateStatus(sessionId, 'CONNECTED', userJid)
-        this.logger.info(`[ConnectionManager] Session ${sessionId} connected (open)`)
+        this.logger.info(`[ConnectionManager] Session ${sessionId} connected as ${userJid}`)
         this.emit('ready', sessionId, userJid)
         return true
       }
@@ -139,12 +144,12 @@ export class ConnectionManager extends EventEmitter {
       const currentState = stateRes.instance?.state
 
       if (currentState === 'open') {
-        const userJid = `${sessionId}@s.whatsapp.net`
+        const userJid = await this.getOwnerNumber(sessionId)
         this.setState(sessionId, 'CONNECTED', userJid)
         this.lastQr.delete(sessionId)
 
         await this.updateStatus(sessionId, 'CONNECTED', userJid)
-        this.logger.info(`[ConnectionManager] Session ${sessionId} is connected (open)`)
+        this.logger.info(`[ConnectionManager] Session ${sessionId} is connected as ${userJid}`)
         this.emit('ready', sessionId, userJid)
 
         // Monitor connected status actively to detect logout
@@ -175,13 +180,13 @@ export class ConnectionManager extends EventEmitter {
 
         if (state === 'open') {
           this.clearPollTimer(sessionId)
-          const userJid = `${sessionId}@s.whatsapp.net`
+          const userJid = await this.getOwnerNumber(sessionId)
           this.setState(sessionId, 'CONNECTED', userJid)
           this.lastQr.delete(sessionId)
 
           await this.updateStatus(sessionId, 'CONNECTED', userJid)
           this.logger.info(
-            `[ConnectionManager] Session ${sessionId} status changed to open via poll`,
+            `[ConnectionManager] Session ${sessionId} status changed to open via poll (JID: ${userJid})`,
           )
           this.emit('ready', sessionId, userJid)
 

@@ -152,8 +152,9 @@ export default fp(async (fastify: FastifyTypebox) => {
 
       const onReady = (id: string, jid: string) => {
         if (id !== instanceName) return
+        const cleanJid = jid ? jid.split('@')[0] : instanceName
         if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: 'ready', jid }))
+          socket.send(JSON.stringify({ type: 'ready', jid: cleanJid }))
         }
       }
 
@@ -178,10 +179,13 @@ export default fp(async (fastify: FastifyTypebox) => {
       }
 
       if (currentRealState === 'open') {
-        const userJid = `${instanceName}@s.whatsapp.net`
-        fastify.log.info(`[WS] Session ${instanceName} is CONNECTED, pushing JID to client`)
+        const ownerNumber = await fastify.wa.getClient().getInstanceOwner(instanceName)
+        const cleanJid = ownerNumber ? ownerNumber.split('@')[0] : instanceName
+        fastify.log.info(
+          `[WS] Session ${instanceName} is CONNECTED as ${cleanJid}, pushing to client`,
+        )
         if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: 'ready', jid: userJid }))
+          socket.send(JSON.stringify({ type: 'ready', jid: cleanJid }))
         }
         // Start connected health monitoring
         fastify.wa.startConnectedPolling(instanceName)
