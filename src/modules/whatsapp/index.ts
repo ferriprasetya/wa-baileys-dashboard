@@ -168,27 +168,27 @@ export default fp(async (fastify: FastifyTypebox) => {
       fastify.wa.on('ready', onReady)
       fastify.wa.on('close', onClose)
 
-      // --- Push current state immediately to the newly connected client ---
-      const currentState = fastify.wa.getState(instanceName)
+      // Always verify real-time state with Evolution API on client connect
+      let currentRealState = 'close'
+      try {
+        const stateRes = await fastify.wa.getClient().getConnectionState(instanceName)
+        currentRealState = stateRes.instance?.state || 'close'
+      } catch (err) {
+        fastify.log.warn(`[WS] Error fetching real-time state for ${instanceName}: ${err}`)
+      }
 
-      if (currentState?.state === 'CONNECTED' && currentState?.jid) {
-        fastify.log.info(`[WS] Session ${instanceName} already connected, sending JID to client`)
+      if (currentRealState === 'open') {
+        const userJid = `${instanceName}@s.whatsapp.net`
+        fastify.log.info(`[WS] Session ${instanceName} is CONNECTED, pushing JID to client`)
         if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: 'ready', jid: currentState.jid }))
+          socket.send(JSON.stringify({ type: 'ready', jid: userJid }))
         }
-      } else if (currentState?.state === 'SCANNING') {
-        fastify.log.info(`[WS] Session ${instanceName} is SCANNING, pushing cached QR to client`)
-        const lastQr = fastify.wa.getLastQr(instanceName)
-        if (lastQr && socket.readyState === WebSocket.OPEN) {
-          try {
-            const qrImage = lastQr.startsWith('data:') ? lastQr : await QRCode.toDataURL(lastQr)
-            socket.send(JSON.stringify({ type: 'qr', data: qrImage }))
-          } catch (err) {
-            fastify.log.error(err, '[WS] Failed to generate QR from cache')
-          }
-        }
+        // Start connected health monitoring
+        fastify.wa.startConnectedPolling(instanceName)
       } else {
-        fastify.log.info(`[WS] Session ${instanceName} not started, initialising...`)
+        fastify.log.info(
+          `[WS] Session ${instanceName} state is "${currentRealState}", initializing fresh QR / connect flow...`,
+        )
 
         try {
           await fastify.wa.start(instanceName)
