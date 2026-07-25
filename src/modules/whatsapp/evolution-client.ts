@@ -20,15 +20,15 @@ export interface EvolutionConnectResponse {
 
 export function extractQrFromResponse(res: EvolutionConnectResponse): string | undefined {
   if (!res) return undefined
-  // Prioritize base64 image data URL from Evolution API
-  const base64 = res.base64 || res.qrcode?.base64
-  if (base64 && typeof base64 === 'string') {
-    return base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`
-  }
-  // Fallback to raw code string
+  // Prioritize raw WhatsApp QR code string (2@...) for high-contrast client rendering
   const code = res.code || res.qrcode?.code
   if (code && typeof code === 'string') {
     return code
+  }
+  // Fallback to base64 image data URL
+  const base64 = res.base64 || res.qrcode?.base64
+  if (base64 && typeof base64 === 'string') {
+    return base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`
   }
   return undefined
 }

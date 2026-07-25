@@ -44,7 +44,9 @@
         if (msg.type === 'qr') {
           // Show QR
           qrLoading.classList.add('hidden');
-          qrImage.src = msg.data;
+          if (qrImage.src !== msg.data) {
+            qrImage.src = msg.data;
+          }
           qrImage.classList.remove('hidden');
           statusText.innerText = "Scan this QR Code now!";
           statusText.className = "text-sm font-medium text-blue-600 mb-4 animate-pulse";
@@ -67,6 +69,14 @@
           }, 2000);
           
           ws.close();
+        }
+        else if (msg.type === 'close') {
+          // Device unlinked or logged out
+          qrImage.classList.add('hidden');
+          qrLoading.classList.remove('hidden');
+          qrLoading.innerHTML = "Device logged out.<br>Generating new QR Code...";
+          statusText.innerText = "Session disconnected";
+          statusText.className = "text-sm font-medium text-amber-600 mb-4";
         }
       };
 

@@ -85,11 +85,16 @@ export class ConnectionManager extends EventEmitter {
 
       const qrString = extractQrFromResponse(connectRes)
       if (qrString) {
-        this.logger.info(`[ConnectionManager] QR Code received from Evolution API for ${sessionId}`)
+        const previousQr = this.lastQr.get(sessionId)
         this.lastQr.set(sessionId, qrString)
         this.setState(sessionId, 'SCANNING')
         await this.updateStatus(sessionId, 'SCANNING')
-        this.emit('qr', sessionId, qrString)
+
+        // Only emit 'qr' if QR code string actually changed to avoid image flicker
+        if (previousQr !== qrString) {
+          this.logger.info(`[ConnectionManager] QR Code received from Evolution API for ${sessionId}`)
+          this.emit('qr', sessionId, qrString)
+        }
       }
 
       return false
@@ -182,6 +187,13 @@ export class ConnectionManager extends EventEmitter {
   }
 
   async start(sessionId: string) {
+    // If pollTimer is already running for a SCANNING session with an active QR code, do not restart
+    const currentState = this.getState(sessionId)?.state
+    if (currentState === 'SCANNING' && this.pollTimers.has(sessionId) && this.lastQr.has(sessionId)) {
+      this.logger.info(`[ConnectionManager] Session ${sessionId} is already scanning with an active QR code`)
+      return
+    }
+
     this.clearPollTimer(sessionId)
 
     this.logger.info(`[ConnectionManager] Starting/checking session ${sessionId}`)
@@ -217,11 +229,8 @@ export class ConnectionManager extends EventEmitter {
 
     // 3. Start scanning polling interval (every 3 seconds)
     // - Every tick checks if connection state turned 'open'
-    // - Every 5 ticks (15 seconds), re-requests connectInstance to get a fresh, non-expired QR code
-    let tickCount = 0
+    // - Only fetches QR if lastQr is not set
     const pollInterval = setInterval(async () => {
-      tickCount++
-
       try {
         const stateRes = await this.client.getConnectionState(sessionId)
         const state = stateRes.instance?.state
@@ -243,16 +252,9 @@ export class ConnectionManager extends EventEmitter {
           return
         }
 
-        // Periodically refresh QR code every 15 seconds (5 ticks of 3s)
-        if (tickCount % 5 === 0) {
-          this.logger.info(
-            `[ConnectionManager] Auto-refreshing QR Code for session ${sessionId} (tick #${tickCount})`,
-          )
-          const connected = await this.requestQrAndConnect(sessionId)
-          if (connected) {
-            this.startConnectedPolling(sessionId)
-            return
-          }
+        // Fetch QR code if not present
+        if (!this.lastQr.has(sessionId)) {
+          await this.requestQrAndConnect(sessionId)
         }
       } catch (err) {
         this.logger.error(

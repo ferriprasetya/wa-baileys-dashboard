@@ -141,7 +141,12 @@ export default fp(async (fastify: FastifyTypebox) => {
         if (id !== instanceName) return
 
         try {
-          const qrImage = qrString.startsWith('data:') ? qrString : await QRCode.toDataURL(qrString)
+          const qrImage = qrString.startsWith('data:')
+            ? qrString
+            : await QRCode.toDataURL(qrString, {
+                margin: 2,
+                color: { dark: '#000000', light: '#ffffff' },
+              })
           if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: 'qr', data: qrImage }))
           }
@@ -158,16 +163,30 @@ export default fp(async (fastify: FastifyTypebox) => {
         }
       }
 
-      const onClose = (id: string) => {
+      const onClose = async (id: string) => {
         if (id !== instanceName) return
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify({ type: 'close' }))
+          try {
+            fastify.log.info(
+              `[WS] Session ${instanceName} closed/unlinked. Restarting connect flow for fresh QR...`,
+            )
+            await fastify.wa.start(instanceName)
+          } catch (err) {
+            fastify.log.error(err, `[WS] Failed to restart session ${instanceName} after close`)
+          }
         }
       }
 
       fastify.wa.on('qr', onQr)
       fastify.wa.on('ready', onReady)
       fastify.wa.on('close', onClose)
+
+      // Send existing cached QR code immediately to newly connected socket if available
+      const cachedQr = fastify.wa.getLastQr(instanceName)
+      if (cachedQr) {
+        onQr(instanceName, cachedQr)
+      }
 
       // Always verify real-time state with Evolution API on client connect
       let currentRealState = 'close'
