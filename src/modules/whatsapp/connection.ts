@@ -114,17 +114,22 @@ export class ConnectionManager extends EventEmitter {
         if (session.status === 'CONNECTED') {
           const stateRes = await this.client.getConnectionState(session.sessionId)
           const currentState = stateRes.instance?.state
-          const ownerNumber = await this.client.getInstanceOwner(session.sessionId)
 
-          if (currentState !== 'open' || !ownerNumber) {
+          if (currentState !== 'open') {
             this.logger.warn(
-              `[ConnectionManager] Sync: Session ${session.sessionId} is unlinked (state=${currentState}, owner=${ownerNumber})`,
+              `[ConnectionManager] Sync: Session ${session.sessionId} is unlinked (state=${currentState})`,
             )
             this.clearPollTimer(session.sessionId)
             this.setState(session.sessionId, 'DISCONNECTED')
             this.lastQr.delete(session.sessionId)
             await this.updateStatus(session.sessionId, 'DISCONNECTED', null)
             this.emit('close', session.sessionId)
+          } else {
+            const ownerNumber = await this.client.getInstanceOwner(session.sessionId)
+            if (ownerNumber && session.jid !== ownerNumber) {
+              this.setState(session.sessionId, 'CONNECTED', ownerNumber)
+              await this.updateStatus(session.sessionId, 'CONNECTED', ownerNumber)
+            }
           }
         }
       }
@@ -145,11 +150,10 @@ export class ConnectionManager extends EventEmitter {
       try {
         const stateRes = await this.client.getConnectionState(sessionId)
         const currentState = stateRes.instance?.state
-        const ownerNumber = await this.client.getInstanceOwner(sessionId)
 
-        if (currentState !== 'open' || !ownerNumber) {
+        if (currentState !== 'open') {
           this.logger.warn(
-            `[ConnectionManager] Session ${sessionId} unlinked / logged out on Evolution API (state=${currentState}, owner=${ownerNumber})`,
+            `[ConnectionManager] Session ${sessionId} unlinked / logged out on Evolution API (state=${currentState})`,
           )
           this.clearPollTimer(sessionId)
           this.setState(sessionId, 'DISCONNECTED')
@@ -157,6 +161,14 @@ export class ConnectionManager extends EventEmitter {
 
           await this.updateStatus(sessionId, 'DISCONNECTED', null)
           this.emit('close', sessionId)
+          return
+        }
+
+        // If session is open, ensure owner number JID is synced
+        const ownerNumber = await this.client.getInstanceOwner(sessionId)
+        if (ownerNumber && this.getState(sessionId)?.jid !== ownerNumber) {
+          this.setState(sessionId, 'CONNECTED', ownerNumber)
+          await this.updateStatus(sessionId, 'CONNECTED', ownerNumber)
         }
       } catch (err) {
         this.logger.error(

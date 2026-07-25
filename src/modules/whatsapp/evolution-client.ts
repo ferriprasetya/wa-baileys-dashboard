@@ -229,21 +229,71 @@ export class EvolutionClient {
     }
   }
 
-  // Fetch Instance Info & Owner Phone Number JID
+  // Helper to extract clean phone number from string
+  private extractPhoneNumber(raw: unknown): string | null {
+    if (!raw || typeof raw !== 'string') return null
+    const clean = raw.split('@')[0].replace(/[^0-9]/g, '')
+    return clean && clean.length >= 7 ? clean : null
+  }
+
+  // Fetch Instance Info & Owner Phone Number
   async getInstanceOwner(instanceName: string): Promise<string | null> {
     try {
-      const res = await this.httpClient.get<Array<{ owner?: string; instanceName?: string }>>(
+      const res = await this.httpClient.get<unknown>(
         `/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`,
       )
-      if (Array.isArray(res.data) && res.data.length > 0) {
-        const owner = res.data[0].owner
-        if (owner) {
-          return owner.split('@')[0]
+      const data = res.data
+      let targetObj: Record<string, unknown> | null = null
+
+      if (Array.isArray(data) && data.length > 0) {
+        targetObj =
+          (data.find(
+            (item: Record<string, unknown>) =>
+              item?.instanceName === instanceName ||
+              item?.name === instanceName ||
+              (item?.instance as Record<string, unknown>)?.instanceName === instanceName,
+          ) as Record<string, unknown>) || (data[0] as Record<string, unknown>)
+      } else if (data && typeof data === 'object') {
+        const obj = data as Record<string, unknown>
+        if (Array.isArray(obj.instances) && obj.instances.length > 0) {
+          targetObj =
+            (obj.instances.find(
+              (item: Record<string, unknown>) =>
+                item?.instanceName === instanceName || item?.name === instanceName,
+            ) as Record<string, unknown>) || (obj.instances[0] as Record<string, unknown>)
+        } else {
+          targetObj = obj
         }
+      }
+
+      if (targetObj) {
+        const candidate =
+          targetObj.owner ||
+          targetObj.ownerJid ||
+          targetObj.number ||
+          targetObj.profileJid ||
+          (targetObj.instance as Record<string, unknown>)?.owner ||
+          (targetObj.instance as Record<string, unknown>)?.ownerJid ||
+          (targetObj.connectionStatus as Record<string, unknown>)?.owner
+
+        const phone = this.extractPhoneNumber(candidate)
+        if (phone) return phone
       }
     } catch (err) {
       this.logger?.warn(`[EvolutionAPI] Failed to fetch instance owner for ${instanceName}: ${err}`)
     }
+
+    // Fallback: Check connectionState response
+    try {
+      const stateRes = await this.getConnectionState(instanceName)
+      const instanceData = stateRes.instance as Record<string, unknown> | undefined
+      const candidate = instanceData?.owner || instanceData?.ownerJid
+      const phone = this.extractPhoneNumber(candidate)
+      if (phone) return phone
+    } catch {
+      // ignore
+    }
+
     return null
   }
 }
