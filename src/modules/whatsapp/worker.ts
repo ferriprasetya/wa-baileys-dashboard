@@ -52,6 +52,18 @@ export const initWorker = (fastify: FastifyInstance) => {
 
         const instanceName = session.sessionId
 
+        const minDelay = Number(fastify.config.WA_DELAY_MIN_MS) || 5000
+        const maxDelay = Number(fastify.config.WA_DELAY_MAX_MS) || 30000
+        const jitterMs =
+          maxDelay > minDelay
+            ? Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay
+            : minDelay
+
+        fastify.log.info(
+          `[Worker] Waiting jitter delay of ${jitterMs}ms before sending Job ${job.id} to ${to}...`,
+        )
+        await new Promise((resolve) => setTimeout(resolve, jitterMs))
+
         // Send message via Evolution API client
         await fastify.wa.getClient().sendTextMessage(instanceName, to, formattedMessage)
 
@@ -61,7 +73,9 @@ export const initWorker = (fastify: FastifyInstance) => {
           .set({ status: 'SENT', updatedAt: new Date(), error: null })
           .where(eq(messageLogs.id, logId))
 
-        fastify.log.info(`[Worker] Job ${job.id} COMPLETED. Message sent to ${to}`)
+        fastify.log.info(
+          `[Worker] Job ${job.id} COMPLETED. Message sent to ${to} (jitter: ${jitterMs}ms)`,
+        )
 
         return { success: true, sentTo: to }
       } catch (err) {
@@ -78,11 +92,7 @@ export const initWorker = (fastify: FastifyInstance) => {
     },
     {
       connection,
-      concurrency: 5, // Can process 5 messages simultaneously in parallel
-      limiter: {
-        max: 10, // Maximum 10 messages
-        duration: 1000, // Per second (Simple Rate Limiting)
-      },
+      concurrency: 1, // Sequential human-like sending speed per worker instance
     },
   )
 

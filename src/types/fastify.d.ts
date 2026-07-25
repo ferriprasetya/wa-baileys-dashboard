@@ -22,6 +22,10 @@ declare module 'fastify' {
       WA_QUEUE_BACKOFF_DELAY: number
       WA_QUEUE_REMOVE_ON_COMPLETE: number
       WA_QUEUE_REMOVE_ON_FAIL: number
+      WA_DELAY_MIN_MS: number
+      WA_DELAY_MAX_MS: number
+      WA_TYPING_MIN_MS: number
+      WA_TYPING_MAX_MS: number
 
       // Evolution API Configuration
       EVOLUTION_API_URL: string

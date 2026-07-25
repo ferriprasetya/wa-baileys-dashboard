@@ -11,12 +11,16 @@ export default fp(async (fastify) => {
     REDIS_HOST: Type.String({ default: 'localhost' }),
     REDIS_PORT: Type.Number({ default: 6379 }),
 
-    // WhatsApp Queue Configuration
+    // WhatsApp Queue & Delay Configuration
     WA_QUEUE_NAME: Type.String({ default: 'wa-sending-queue' }),
     WA_QUEUE_ATTEMPTS: Type.Number({ default: 3 }),
     WA_QUEUE_BACKOFF_DELAY: Type.Number({ default: 1000 }),
     WA_QUEUE_REMOVE_ON_COMPLETE: Type.Number({ default: 100 }),
     WA_QUEUE_REMOVE_ON_FAIL: Type.Number({ default: 500 }),
+    WA_DELAY_MIN_MS: Type.Number({ default: 5000 }),
+    WA_DELAY_MAX_MS: Type.Number({ default: 30000 }),
+    WA_TYPING_MIN_MS: Type.Number({ default: 1000 }),
+    WA_TYPING_MAX_MS: Type.Number({ default: 3000 }),
 
     // Evolution API Configuration
     EVOLUTION_API_URL: Type.String({ default: '' }),
