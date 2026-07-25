@@ -24,6 +24,9 @@ export default async function dashboardModule(fastify: FastifyTypebox) {
 
       const searchCondition = search ? ilike(tenants.name, `%${search}%`) : undefined
 
+      // Sync active session statuses with Evolution API in real-time
+      await fastify.wa.syncAllSessions()
+
       // Fetch tenants with pagination and search
       const [data, totalCountResult] = await Promise.all([
         fastify.db

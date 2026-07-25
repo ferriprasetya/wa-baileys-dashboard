@@ -86,10 +86,28 @@ export class EvolutionClient {
   // Get Connection State
   async getConnectionState(instanceName: string): Promise<EvolutionStateResponse> {
     try {
-      const res = await this.httpClient.get<EvolutionStateResponse>(
+      const res = await this.httpClient.get<Record<string, unknown>>(
         `/instance/connectionState/${encodeURIComponent(instanceName)}`,
       )
-      return res.data
+      const data = res.data as {
+        instance?: { state?: string }
+        state?: string
+        status?: string
+        connectionStatus?: { state?: string }
+      }
+      const state =
+        data?.instance?.state ||
+        data?.state ||
+        data?.status ||
+        data?.connectionStatus?.state ||
+        'close'
+
+      return {
+        instance: {
+          instanceName,
+          state,
+        },
+      }
     } catch (err) {
       if (isAxiosError(err) && err.response?.status === 404) {
         return { instance: { instanceName, state: 'close' } }
