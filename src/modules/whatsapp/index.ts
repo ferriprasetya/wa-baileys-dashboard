@@ -191,16 +191,10 @@ export default fp(async (fastify: FastifyTypebox) => {
         fastify.wa.startConnectedPolling(instanceName)
       } else {
         fastify.log.info(
-          `[WS] Session ${instanceName} state is "${currentRealState}", fetching fresh QR code from Evolution API...`,
+          `[WS] Session ${instanceName} state is "${currentRealState}", initializing connect flow...`,
         )
 
         try {
-          const freshQr = await fastify.wa.requestFreshQr(instanceName)
-          if (freshQr && socket.readyState === WebSocket.OPEN) {
-            const qrImage = freshQr.startsWith('data:') ? freshQr : await QRCode.toDataURL(freshQr)
-            socket.send(JSON.stringify({ type: 'qr', data: qrImage }))
-          }
-
           await fastify.wa.start(instanceName)
         } catch (error) {
           fastify.log.error(error, `[WS] Failed to start session ${instanceName}`)

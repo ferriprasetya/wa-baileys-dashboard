@@ -5,12 +5,32 @@ export interface EvolutionConnectResponse {
   code?: string
   base64?: string
   pairingCode?: string
+  qrcode?: {
+    code?: string
+    base64?: string
+  }
   instance?: {
     instanceName?: string
     state?: string
   }
   error?: boolean
   message?: string | string[]
+  [key: string]: unknown
+}
+
+export function extractQrFromResponse(res: EvolutionConnectResponse): string | undefined {
+  if (!res) return undefined
+  // Prioritize base64 image data URL from Evolution API
+  const base64 = res.base64 || res.qrcode?.base64
+  if (base64 && typeof base64 === 'string') {
+    return base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`
+  }
+  // Fallback to raw code string
+  const code = res.code || res.qrcode?.code
+  if (code && typeof code === 'string') {
+    return code
+  }
+  return undefined
 }
 
 export interface EvolutionStateResponse {

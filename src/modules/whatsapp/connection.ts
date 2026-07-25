@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { FastifyBaseLogger } from 'fastify'
 import EventEmitter from 'events'
 import { FastifyDatabase } from '@/types/common.js'
-import { EvolutionClient } from './evolution-client.js'
+import { EvolutionClient, extractQrFromResponse } from './evolution-client.js'
 
 export class ConnectionManager extends EventEmitter {
   private db: FastifyDatabase
@@ -61,10 +61,8 @@ export class ConnectionManager extends EventEmitter {
     return owner ? owner.split('@')[0] : sessionId
   }
 
-  // Request a guaranteed fresh QR code directly from Evolution API bypassing any local cache
-  async requestFreshQr(sessionId: string): Promise<string | null> {
-    this.lastQr.delete(sessionId)
-
+  // Request QR Code from Evolution API and emit if available
+  async requestQrAndConnect(sessionId: string): Promise<boolean> {
     try {
       let connectRes = await this.client.connectInstance(sessionId)
 
@@ -82,40 +80,30 @@ export class ConnectionManager extends EventEmitter {
         await this.updateStatus(sessionId, 'CONNECTED', userJid)
         this.logger.info(`[ConnectionManager] Session ${sessionId} connected as ${userJid}`)
         this.emit('ready', sessionId, userJid)
-        return null
+        return true
       }
 
-      let qrString = connectRes.code || connectRes.base64
-
-      // If no QR code returned, attempt restarting instance to force socket initialization
-      if (!qrString) {
-        this.logger.info(
-          `[ConnectionManager] No QR code returned, restarting instance ${sessionId}...`,
-        )
-        await this.client.restartInstance(sessionId)
-        connectRes = await this.client.connectInstance(sessionId)
-        qrString = connectRes.code || connectRes.base64
-      }
-
+      const qrString = extractQrFromResponse(connectRes)
       if (qrString) {
-        this.logger.info(`[ConnectionManager] Fresh QR Code received for session ${sessionId}`)
+        this.logger.info(`[ConnectionManager] QR Code received from Evolution API for ${sessionId}`)
         this.lastQr.set(sessionId, qrString)
         this.setState(sessionId, 'SCANNING')
         await this.updateStatus(sessionId, 'SCANNING')
         this.emit('qr', sessionId, qrString)
-        return qrString
       }
-      return null
+
+      return false
     } catch (err) {
-      this.logger.warn(`[ConnectionManager] Failed to request fresh QR for ${sessionId}: ${err}`)
-      return null
+      this.logger.warn(`[ConnectionManager] Failed to request QR for ${sessionId}: ${err}`)
+      return false
     }
   }
 
-  // Request fresh QR Code from Evolution API and emit if available
-  async requestQrAndConnect(sessionId: string): Promise<boolean> {
-    await this.requestFreshQr(sessionId)
-    return this.getState(sessionId)?.state === 'CONNECTED'
+  // Helper alias for requesting fresh QR Code directly from Evolution API
+  async requestFreshQr(sessionId: string): Promise<string | null> {
+    this.lastQr.delete(sessionId)
+    await this.requestQrAndConnect(sessionId)
+    return this.getLastQr(sessionId) || null
   }
 
   // Sync all active sessions DB status with Evolution API in real-time
