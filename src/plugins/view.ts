@@ -7,7 +7,7 @@ import path from 'path'
 export default fp(async (fastify) => {
   // Setup Static Files (CSS/JS Client)
   fastify.register(fastifyStatic, {
-    root: path.join(process.cwd(), 'public'),
+    root: path.join(process.cwd(), 'src/public'),
     prefix: '/public/',
   })
 

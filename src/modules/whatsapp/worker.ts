@@ -1,4 +1,4 @@
-import { messageLogs } from '@/common/schema.js'
+import { messageLogs, sessions } from '@/common/schema.js'
 import { Worker, Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { FastifyInstance } from 'fastify'
@@ -9,14 +9,6 @@ interface SendMessageData {
   to: string
   message: string
 }
-
-// Helper to generate random delay between min and max milliseconds
-const randomDelay = (min: number, max: number) => {
-  return Math.floor(Math.random() * (max - min + 1) + min)
-}
-
-// Helper to sleep for given milliseconds
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 // Helper function to process message formatting
 const processMessageFormatting = (message: string): string => {
@@ -45,61 +37,51 @@ export const initWorker = (fastify: FastifyInstance) => {
 
       fastify.log.info(`[Worker] Processing Job ${job.id} for Tenant ${tenantId}`)
 
-      // Get Socket from Connection Manager
-      const socket = fastify.wa.getSocket(tenantId)
+      try {
+        const formattedMessage = processMessageFormatting(message)
 
-      // 2. Check Connection
-      // We check the existence of the socket AND whether the connection is open
-      if (!socket || !socket.user) {
-        // Throw Error will trigger BullMQ's Retry/Backoff mechanism
-        throw new Error(`Socket not connected for tenant ${tenantId}`)
+        const [session] = await fastify.db
+          .select()
+          .from(sessions)
+          .where(eq(sessions.tenantId, tenantId))
+          .limit(1)
+
+        if (!session) {
+          throw new Error(`No active session found for tenant ${tenantId}`)
+        }
+
+        const instanceName = session.sessionId
+
+        // Send message via Evolution API client
+        await fastify.wa.getClient().sendTextMessage(instanceName, to, formattedMessage)
+
+        // Update Log Status to SENT
+        await fastify.db
+          .update(messageLogs)
+          .set({ status: 'SENT', updatedAt: new Date(), error: null })
+          .where(eq(messageLogs.id, logId))
+
+        fastify.log.info(`[Worker] Job ${job.id} COMPLETED. Message sent to ${to}`)
+
+        return { success: true, sentTo: to }
+      } catch (err) {
+        const errorMessage = (err as Error).message || 'Unknown error'
+
+        await fastify.db
+          .update(messageLogs)
+          .set({ status: 'FAILED', error: errorMessage, updatedAt: new Date() })
+          .where(eq(messageLogs.id, logId))
+
+        fastify.log.error(`[Worker] Job ${job.id} FAILED for tenant ${tenantId}: ${errorMessage}`)
+        throw err
       }
-
-      // --- HUMAN-LIKE DELAY LOGIC ---
-      // Set delay
-      const delay = randomDelay(fastify.config.WA_DELAY_MIN_MS, fastify.config.WA_DELAY_MAX_MS)
-
-      fastify.log.debug(`[Worker] Job ${job.id}: Adding human-like delay of ${delay}ms...`)
-      await sleep(delay)
-
-      // Send presence update
-      await socket.sendPresenceUpdate(
-        'composing',
-        to.includes('@s.whatsapp.net') ? to : `${to}@s.whatsapp.net`,
-      )
-      await sleep(randomDelay(fastify.config.WA_TYPING_MIN_MS, fastify.config.WA_TYPING_MAX_MS)) // Typing for the delay
-      await socket.sendPresenceUpdate(
-        'paused',
-        to.includes('@s.whatsapp.net') ? to : `${to}@s.whatsapp.net`,
-      )
-      // -----------------------------------
-
-      // 3. Format JID (Nomor HP)
-      // Baileys requires format: 62812xxx@s.whatsapp.net
-      // We assume input 'to' is already in number format (628xxx)
-      const jid = to.includes('@s.whatsapp.net') ? to : `${to}@s.whatsapp.net`
-
-      // 4. Send Message
-      // The sendMessage function returns a promise, we await it so the worker waits until it's sent
-      const formattedMessage = processMessageFormatting(message)
-      await socket.sendMessage(jid, { text: formattedMessage })
-
-      // 5. Update Log Status to SENT
-      await fastify.db
-        .update(messageLogs)
-        .set({ status: 'SENT', updatedAt: new Date(), error: null })
-        .where(eq(messageLogs.id, logId))
-
-      fastify.log.info(`[Worker] Job ${job.id} COMPLETED. Message sent to ${to}`)
-
-      return { success: true, sentTo: jid }
     },
     {
       connection,
       concurrency: 5, // Can process 5 messages simultaneously in parallel
       limiter: {
         max: 10, // Maximum 10 messages
-        duration: 1000, // Per second (Simple Rate Limiting to avoid bans)
+        duration: 1000, // Per second (Simple Rate Limiting)
       },
     },
   )

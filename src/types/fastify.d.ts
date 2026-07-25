@@ -23,16 +23,9 @@ declare module 'fastify' {
       WA_QUEUE_REMOVE_ON_COMPLETE: number
       WA_QUEUE_REMOVE_ON_FAIL: number
 
-      // Baileys Configuration
-      WA_PRINT_QR_TERMINAL: boolean
-      WA_SYNC_FULL_HISTORY: boolean
-      WA_BROWSER_TYPE: string
-      WA_BROWSER_NAME: string
-      WA_QR_TIMEOUT: number
-      WA_DELAY_MIN_MS: number
-      WA_DELAY_MAX_MS: number
-      WA_TYPING_MIN_MS: number
-      WA_TYPING_MAX_MS: number
+      // Evolution API Configuration
+      EVOLUTION_API_URL: string
+      EVOLUTION_API_KEY: string
     }
   }
 }

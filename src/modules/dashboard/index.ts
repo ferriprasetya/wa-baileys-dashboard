@@ -74,6 +74,13 @@ export default async function dashboardModule(fastify: FastifyTypebox) {
     name: Type.String({ minLength: 3 }),
   })
 
+  const slugify = (text: string): string =>
+    text
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+
   fastify.post(
     '/tenants',
     {
@@ -83,16 +90,32 @@ export default async function dashboardModule(fastify: FastifyTypebox) {
       const { name } = req.body
       const newApiKey = generateApiKey()
 
+      const slugName = slugify(name) || 'tenant'
+      const shortHash = newApiKey.slice(0, 6)
+      const instanceName = `${slugName}-${shortHash}`.slice(0, 50)
+
       // Transaction: Create Tenant + Init Session Row
+      let createdInstanceName: string | null = null
       await fastify.db.transaction(async (tx) => {
         const [tenant] = await tx.insert(tenants).values({ name, apiKey: newApiKey }).returning()
 
         await tx.insert(sessions).values({
-          sessionId: tenant.id,
+          sessionId: instanceName,
           tenantId: tenant.id,
           status: 'DISCONNECTED', // Default status
         })
+        createdInstanceName = instanceName
       })
+
+      if (createdInstanceName) {
+        try {
+          await fastify.wa.getClient().createInstance(createdInstanceName)
+        } catch (err) {
+          fastify.log.warn(
+            `[Dashboard] Failed to pre-create Evolution instance for ${createdInstanceName}: ${err}`,
+          )
+        }
+      }
 
       // Trigger HTMX full page refresh to show new data
       return reply.header('HX-Refresh', 'true').send()
@@ -110,8 +133,17 @@ export default async function dashboardModule(fastify: FastifyTypebox) {
     async (req, reply) => {
       const { id } = req.params
 
-      // Kill WA Connection (Memory & DB Cleanup)
-      await fastify.wa.deleteSession(id)
+      // Find session to get instanceName (sessionId)
+      const [session] = await fastify.db
+        .select()
+        .from(sessions)
+        .where(eq(sessions.tenantId, id))
+        .limit(1)
+
+      if (session) {
+        // Kill WA Connection & Delete Instance in Evolution API
+        await fastify.wa.deleteSession(session.sessionId)
+      }
 
       await fastify.db.transaction(async (tx) => {
         await tx.delete(tenants).where(eq(tenants.id, id))

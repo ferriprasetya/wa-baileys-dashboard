@@ -18,16 +18,9 @@ export default fp(async (fastify) => {
     WA_QUEUE_REMOVE_ON_COMPLETE: Type.Number({ default: 100 }),
     WA_QUEUE_REMOVE_ON_FAIL: Type.Number({ default: 500 }),
 
-    // Baileys Configuration
-    WA_PRINT_QR_TERMINAL: Type.Boolean({ default: false }),
-    WA_SYNC_FULL_HISTORY: Type.Boolean({ default: false }),
-    WA_BROWSER_TYPE: Type.String({ default: 'ubuntu' }),
-    WA_BROWSER_NAME: Type.String({ default: 'Chrome' }),
-    WA_QR_TIMEOUT: Type.Number({ default: 20000 }),
-    WA_DELAY_MIN_MS: Type.Number({ default: 2000 }),
-    WA_DELAY_MAX_MS: Type.Number({ default: 10000 }),
-    WA_TYPING_MIN_MS: Type.Number({ default: 1000 }),
-    WA_TYPING_MAX_MS: Type.Number({ default: 3000 }),
+    // Evolution API Configuration
+    EVOLUTION_API_URL: Type.String({ default: '' }),
+    EVOLUTION_API_KEY: Type.String({ default: '' }),
   })
 
   await fastify.register(fastifyEnv, {
