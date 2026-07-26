@@ -107,7 +107,8 @@ export class ConnectionManager extends EventEmitter {
   // Helper alias for requesting fresh QR Code directly from Evolution API
   async requestFreshQr(sessionId: string): Promise<string | null> {
     this.lastQr.delete(sessionId)
-    await this.requestQrAndConnect(sessionId)
+    this.clearPollTimer(sessionId)
+    await this.start(sessionId, true)
     return this.getLastQr(sessionId) || null
   }
 
@@ -186,11 +187,11 @@ export class ConnectionManager extends EventEmitter {
     this.pollTimers.set(sessionId, pollInterval)
   }
 
-  async start(sessionId: string) {
-    // If pollTimer is already running for a SCANNING session with an active QR code, do not restart
+  async start(sessionId: string, forceRefresh = false) {
     const currentState = this.getState(sessionId)?.state
-    if (currentState === 'SCANNING' && this.pollTimers.has(sessionId) && this.lastQr.has(sessionId)) {
-      this.logger.info(`[ConnectionManager] Session ${sessionId} is already scanning with an active QR code`)
+    if (!forceRefresh && currentState === 'SCANNING' && this.pollTimers.has(sessionId)) {
+      this.logger.info(`[ConnectionManager] Session ${sessionId} is already scanning, checking fresh QR...`)
+      await this.requestQrAndConnect(sessionId)
       return
     }
 
@@ -228,33 +229,13 @@ export class ConnectionManager extends EventEmitter {
     }
 
     // 3. Start scanning polling interval (every 3 seconds)
-    // - Every tick checks if connection state turned 'open'
-    // - Only fetches QR if lastQr is not set
+    // - Continuously check connection state and fetch updated QR code if Baileys rotated it
     const pollInterval = setInterval(async () => {
       try {
-        const stateRes = await this.client.getConnectionState(sessionId)
-        const state = stateRes.instance?.state
-
-        if (state === 'open') {
+        const isConnected = await this.requestQrAndConnect(sessionId)
+        if (isConnected) {
           this.clearPollTimer(sessionId)
-          const userJid = await this.getOwnerNumber(sessionId)
-          this.setState(sessionId, 'CONNECTED', userJid)
-          this.lastQr.delete(sessionId)
-
-          await this.updateStatus(sessionId, 'CONNECTED', userJid)
-          this.logger.info(
-            `[ConnectionManager] Session ${sessionId} status changed to open via poll (JID: ${userJid})`,
-          )
-          this.emit('ready', sessionId, userJid)
-
-          // Switch to active health monitoring
           this.startConnectedPolling(sessionId)
-          return
-        }
-
-        // Fetch QR code if not present
-        if (!this.lastQr.has(sessionId)) {
-          await this.requestQrAndConnect(sessionId)
         }
       } catch (err) {
         this.logger.error(

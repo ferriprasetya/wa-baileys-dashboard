@@ -171,7 +171,7 @@ export default fp(async (fastify: FastifyTypebox) => {
             fastify.log.info(
               `[WS] Session ${instanceName} closed/unlinked. Restarting connect flow for fresh QR...`,
             )
-            await fastify.wa.start(instanceName)
+            await fastify.wa.requestFreshQr(instanceName)
           } catch (err) {
             fastify.log.error(err, `[WS] Failed to restart session ${instanceName} after close`)
           }
@@ -214,7 +214,7 @@ export default fp(async (fastify: FastifyTypebox) => {
         )
 
         try {
-          await fastify.wa.start(instanceName)
+          await fastify.wa.requestFreshQr(instanceName)
         } catch (error) {
           fastify.log.error(error, `[WS] Failed to start session ${instanceName}`)
           fastify.wa.off('qr', onQr)
