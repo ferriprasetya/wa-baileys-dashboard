@@ -10,14 +10,6 @@ interface SendMessageData {
   message: string
 }
 
-// Helper to generate random delay between min and max milliseconds
-const randomDelay = (min: number, max: number) => {
-  return Math.floor(Math.random() * (max - min + 1) + min)
-}
-
-// Helper to sleep for given milliseconds
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
 // Helper function to process message formatting
 const processMessageFormatting = (message: string): string => {
   return message
@@ -45,46 +37,32 @@ export const initWorker = (fastify: FastifyInstance) => {
 
       fastify.log.info(`[Worker] Processing Job ${job.id} for Tenant ${tenantId}`)
 
-      // Get Socket from Connection Manager
+      // 1. Get Socket from Connection Manager
       const socket = fastify.wa.getSocket(tenantId)
 
       // 2. Check Connection
-      // We check the existence of the socket AND whether the connection is open
       if (!socket || !socket.user) {
         // Throw Error will trigger BullMQ's Retry/Backoff mechanism
         throw new Error(`Socket not connected for tenant ${tenantId}`)
       }
 
-      // --- HUMAN-LIKE DELAY LOGIC ---
-      // Set delay
-      const delay = randomDelay(fastify.config.WA_DELAY_MIN_MS, fastify.config.WA_DELAY_MAX_MS)
+      // 3. Check Anti-Ban Health Risk Level
+      const antiBanInfo = fastify.wa.getAntiBanStats(tenantId)
+      if (antiBanInfo.enabled && antiBanInfo.riskLevel === 'high') {
+        fastify.log.warn(`[Worker] Tenant ${tenantId} is in HIGH ban risk state! Delaying job ${job.id}...`)
+        // Throwing error triggers BullMQ backoff retry until health recovers
+        throw new Error(`AntiBan Protection: Tenant ${tenantId} is currently paused due to High Ban Risk`)
+      }
 
-      fastify.log.debug(`[Worker] Job ${job.id}: Adding human-like delay of ${delay}ms...`)
-      await sleep(delay)
-
-      // Send presence update
-      await socket.sendPresenceUpdate(
-        'composing',
-        to.includes('@s.whatsapp.net') ? to : `${to}@s.whatsapp.net`,
-      )
-      await sleep(randomDelay(fastify.config.WA_TYPING_MIN_MS, fastify.config.WA_TYPING_MAX_MS)) // Typing for the delay
-      await socket.sendPresenceUpdate(
-        'paused',
-        to.includes('@s.whatsapp.net') ? to : `${to}@s.whatsapp.net`,
-      )
-      // -----------------------------------
-
-      // 3. Format JID (Nomor HP)
-      // Baileys requires format: 62812xxx@s.whatsapp.net
-      // We assume input 'to' is already in number format (628xxx)
+      // 4. Format JID (Phone Number)
       const jid = to.includes('@s.whatsapp.net') ? to : `${to}@s.whatsapp.net`
 
-      // 4. Send Message
-      // The sendMessage function returns a promise, we await it so the worker waits until it's sent
+      // 5. Send Message via wrapped Anti-Ban socket
+      // (baileys-antiban automatically applies presence, typing, circadian delays, and rate limiting)
       const formattedMessage = processMessageFormatting(message)
       await socket.sendMessage(jid, { text: formattedMessage })
 
-      // 5. Update Log Status to SENT
+      // 6. Update Log Status to SENT
       await fastify.db
         .update(messageLogs)
         .set({ status: 'SENT', updatedAt: new Date(), error: null })
@@ -96,17 +74,27 @@ export const initWorker = (fastify: FastifyInstance) => {
     },
     {
       connection,
-      concurrency: 5, // Can process 5 messages simultaneously in parallel
+      concurrency: 5,
       limiter: {
-        max: 10, // Maximum 10 messages
-        duration: 1000, // Per second (Simple Rate Limiting to avoid bans)
+        max: 10,
+        duration: 1000,
       },
     },
   )
 
-  // Event Listeners for Debugging
-  worker.on('failed', (job, err) => {
+  // Event Listeners for Failures
+  worker.on('failed', async (job, err) => {
     fastify.log.error(`[Worker] Job ${job?.id} failed: ${err.message}`)
+    if (job?.data?.logId) {
+      try {
+        await fastify.db
+          .update(messageLogs)
+          .set({ status: 'FAILED', error: err.message, updatedAt: new Date() })
+          .where(eq(messageLogs.id, job.data.logId))
+      } catch (dbErr) {
+        fastify.log.error(dbErr as Error, '[Worker] Failed to update messageLog on failure')
+      }
+    }
   })
 
   // Graceful Shutdown Worker on Fastify close

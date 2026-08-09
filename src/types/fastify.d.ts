@@ -33,6 +33,13 @@ declare module 'fastify' {
       WA_DELAY_MAX_MS: number
       WA_TYPING_MIN_MS: number
       WA_TYPING_MAX_MS: number
+
+      // Anti-Ban Configuration
+      WA_ANTIBAN_ENABLED: boolean
+      WA_ANTIBAN_PRESET: string
+      WA_ANTIBAN_TIMEZONE: string
+      WA_ANTIBAN_CIRCADIAN_PROFILE: string
+      WA_ANTIBAN_AUTO_PAUSE: string
     }
   }
 }

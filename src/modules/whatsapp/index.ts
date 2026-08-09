@@ -287,4 +287,40 @@ export default fp(async (fastify: FastifyTypebox) => {
       })
     },
   )
+
+  // -- GET /public/api/tenants/:id/antiban-stats (Anti-Ban Telemetry API) --
+  fastify.get(
+    '/public/api/tenants/:id/antiban-stats',
+    {
+      schema: {
+        params: Type.Object({ id: Type.String() }),
+        querystring: Type.Object({ apiKey: Type.Optional(Type.String()) }),
+      },
+    },
+    async (req, reply) => {
+      const { id } = req.params
+      const { apiKey } = req.query as { apiKey?: string }
+
+      const [tenant] = await fastify.db
+        .select()
+        .from(tenants)
+        .where(eq(tenants.id, id))
+        .limit(1)
+
+      if (!tenant) {
+        return reply.status(404).send({ error: 'Tenant not found' })
+      }
+
+      if (apiKey && tenant.apiKey !== apiKey) {
+        return reply.status(401).send({ error: 'Invalid API Key' })
+      }
+
+      const antiBanInfo = fastify.wa.getAntiBanStats(id)
+      return reply.status(200).send({
+        tenantId: id,
+        tenantName: tenant.name,
+        ...antiBanInfo,
+      })
+    },
+  )
 })

@@ -9,16 +9,25 @@ import {
 } from '@whiskeysockets/baileys'
 import { Boom } from '@hapi/boom'
 import { sessions, authCredits } from '@/common/schema.js'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { usePostgresAuthState } from './auth-store.js'
 import { FastifyBaseLogger } from 'fastify'
 import EventEmitter from 'events'
 import { FastifyDatabase } from '@/types/common.js'
+import { wrapSocket, WrappedSocket, AntiBanStats, WarmUpState, PresetName } from 'baileys-antiban'
+
+export interface AntiBanInfo {
+  enabled: boolean
+  riskLevel: string
+  score?: number
+  warmUpDay?: number
+  stats?: AntiBanStats
+}
 
 export class ConnectionManager extends EventEmitter {
   private db: FastifyDatabase
   private logger: FastifyBaseLogger
-  private sockets: Map<string, WASocket> = new Map()
+  private sockets: Map<string, WrappedSocket | WASocket> = new Map()
   private states: Map<string, { state: string; jid?: string }> = new Map()
 
   // Cache WA version — fetch once, reuse on every reconnect
@@ -39,7 +48,7 @@ export class ConnectionManager extends EventEmitter {
   }
 
   // Get socket instance
-  getSocket(sessionId: string) {
+  getSocket(sessionId: string): (WrappedSocket | WASocket) | undefined {
     return this.sockets.get(sessionId)
   }
 
@@ -51,6 +60,28 @@ export class ConnectionManager extends EventEmitter {
   // Get last QR string — used to push QR immediately to newly connected WS clients
   getLastQr(sessionId: string): string | undefined {
     return this.lastQr.get(sessionId)
+  }
+
+  // Get AntiBan statistics and health risk level for a session
+  getAntiBanStats(sessionId: string): AntiBanInfo {
+    const sock = this.sockets.get(sessionId)
+    if (sock && 'antiban' in sock && sock.antiban) {
+      const stats = sock.antiban.getStats()
+      const riskLevel = (stats.health as any)?.riskLevel || (stats.health as any)?.level || 'low'
+      const score = (stats.health as any)?.score ?? 100
+      const warmUpDay = (stats.warmUp as any)?.day || 1
+      return {
+        enabled: true,
+        riskLevel,
+        score,
+        warmUpDay,
+        stats,
+      }
+    }
+    return {
+      enabled: false,
+      riskLevel: 'unknown',
+    }
   }
 
   // Set state
@@ -75,12 +106,38 @@ export class ConnectionManager extends EventEmitter {
     return this.waVersion!
   }
 
+  // Save AntiBan WarmUp state to auth_credits table in PostgreSQL
+  private async saveAntiBanState(sessionId: string) {
+    const sock = this.sockets.get(sessionId)
+    if (sock && 'antiban' in sock && sock.antiban) {
+      try {
+        const warmUpState = sock.antiban.exportWarmUpState()
+        if (warmUpState) {
+          await this.db
+            .insert(authCredits)
+            .values({
+              sessionId,
+              key: 'antiban_state',
+              value: warmUpState as any,
+            })
+            .onConflictDoUpdate({
+              target: [authCredits.sessionId, authCredits.key],
+              set: { value: warmUpState as any },
+            })
+        }
+      } catch (err) {
+        this.logger.error(err as Error, `[WA] Failed to save AntiBan state for ${sessionId}`)
+      }
+    }
+  }
+
   // Start or restart session
   async start(sessionId: string) {
     // --- Cleanup existing socket before creating a new one ---
     const existingSock = this.sockets.get(sessionId)
     if (existingSock) {
       this.logger.debug(`[WA] Closing existing socket for ${sessionId} before restart`)
+      await this.saveAntiBanState(sessionId)
       existingSock.end(new Error('session_restart'))
       this.sockets.delete(sessionId)
     }
@@ -88,11 +145,27 @@ export class ConnectionManager extends EventEmitter {
     // Load auth credentials from database
     const { state, saveCreds } = await usePostgresAuthState(this.db, sessionId)
 
+    // Load previous AntiBan state from database if available
+    let warmUpState: WarmUpState | undefined
+    try {
+      const antibanRows = await this.db
+        .select()
+        .from(authCredits)
+        .where(and(eq(authCredits.sessionId, sessionId), eq(authCredits.key, 'antiban_state')))
+        .limit(1)
+
+      if (antibanRows.length > 0 && antibanRows[0].value) {
+        warmUpState = antibanRows[0].value as unknown as WarmUpState
+      }
+    } catch (err) {
+      this.logger.warn(`[WA] AntiBan state load skipped for ${sessionId}: ${(err as Error).message}`)
+    }
+
     // Use cached version — avoids a slow HTTP fetch on every reconnect
     const version = await this.getWaVersion()
 
-    // Initialize WhatsApp socket
-    const sock = makeWASocket({
+    // Initialize raw WhatsApp socket
+    const rawSock = makeWASocket({
       version,
       auth: state,
       printQRInTerminal: process.env.WA_PRINT_QR_TERMINAL === 'true' || false,
@@ -104,15 +177,81 @@ export class ConnectionManager extends EventEmitter {
       qrTimeout: Number(process.env.WA_QR_TIMEOUT) || 20000,
     })
 
-    // Store socket in memory
+    // --- WRAP SOCKET WITH BAILEYS-ANTIBAN MIDDLEWARE ---
+    const antibanEnabled = process.env.WA_ANTIBAN_ENABLED !== 'false'
+    const preset = (process.env.WA_ANTIBAN_PRESET || 'balanced') as PresetName
+    const timezone = process.env.WA_ANTIBAN_TIMEZONE || 'Asia/Jakarta'
+    const circadianProfile = (process.env.WA_ANTIBAN_CIRCADIAN_PROFILE || 'default') as any
+    const autoPauseAt = (process.env.WA_ANTIBAN_AUTO_PAUSE || 'high') as any
+
+    const sock = antibanEnabled
+      ? wrapSocket(
+          rawSock as any,
+          {
+            preset,
+            presence: {
+              circadian: {
+                enabled: true,
+                profile: circadianProfile,
+                timezone,
+              },
+            },
+            health: {
+              autoPauseAt,
+            },
+            logging: true,
+          },
+          warmUpState,
+        )
+      : rawSock
+
+    // Store wrapped socket in memory
     this.sockets.set(sessionId, sock)
 
+    // Wire up AntiBan event listeners if wrapped
+    if ('antiban' in sock && sock.antiban) {
+      rawSock.ev.on('messages.upsert', (upsert) => {
+        try {
+          for (const msg of upsert.messages) {
+            const jid = msg.key.remoteJid
+            const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text
+            if (jid) {
+              sock.antiban.onIncomingMessage(jid, text || undefined)
+            }
+          }
+        } catch (err) {
+          this.logger.debug(`[AntiBan] onIncomingMessage error: ${(err as Error).message}`)
+        }
+      })
+
+      rawSock.ev.on('message-receipt.update', (receipts) => {
+        try {
+          for (const r of receipts) {
+            if (r.key?.id) {
+              sock.antiban.onDeliveryReceipt(r.key.id)
+            }
+          }
+        } catch (err) {
+          this.logger.debug(`[AntiBan] onDeliveryReceipt error: ${(err as Error).message}`)
+        }
+      })
+    }
+
     // Handle credentials updates
-    sock.ev.on('creds.update', saveCreds)
+    rawSock.ev.on('creds.update', saveCreds)
 
     // Handle connection updates
-    sock.ev.on('connection.update', async (update) => {
+    rawSock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update
+
+      if ('antiban' in sock && sock.antiban) {
+        if (connection === 'close' && lastDisconnect?.error) {
+          const code = (lastDisconnect.error as Boom)?.output?.statusCode || 'unknown'
+          sock.antiban.onDisconnect(code)
+        } else if (connection === 'open') {
+          sock.antiban.onReconnect()
+        }
+      }
 
       if (qr) {
         this.logger.debug(`[WA] QR Generated for ${sessionId}`)
@@ -124,7 +263,7 @@ export class ConnectionManager extends EventEmitter {
       }
 
       if (connection === 'open') {
-        const userJid = sock.user?.id
+        const userJid = rawSock.user?.id
 
         // Reset reconnect state on successful connection
         this.reconnectAttempts.delete(sessionId)
@@ -143,6 +282,9 @@ export class ConnectionManager extends EventEmitter {
           })
           .where(eq(sessions.sessionId, sessionId))
 
+        // Save AntiBan state after successful connection
+        await this.saveAntiBanState(sessionId)
+
         this.logger.info(`[WA] Session ${sessionId} connected as ${userJid}`)
         this.emit('ready', sessionId, userJid)
       } else if (connection === 'close') {
@@ -150,6 +292,7 @@ export class ConnectionManager extends EventEmitter {
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut
 
         this.emit('close', sessionId, shouldReconnect)
+        await this.saveAntiBanState(sessionId)
 
         if (shouldReconnect) {
           // VALIDATION: Check if session/tenant still exists before reconnecting
@@ -239,6 +382,7 @@ export class ConnectionManager extends EventEmitter {
 
     const sock = this.sockets.get(sessionId)
     if (sock) {
+      await this.saveAntiBanState(sessionId)
       sock.end(new Error('session_deleted'))
       this.sockets.delete(sessionId)
     }

@@ -28,6 +28,13 @@ export default fp(async (fastify) => {
     WA_DELAY_MAX_MS: Type.Number({ default: 10000 }),
     WA_TYPING_MIN_MS: Type.Number({ default: 1000 }),
     WA_TYPING_MAX_MS: Type.Number({ default: 3000 }),
+
+    // Anti-Ban Configuration
+    WA_ANTIBAN_ENABLED: Type.Boolean({ default: true }),
+    WA_ANTIBAN_PRESET: Type.String({ default: 'balanced' }),
+    WA_ANTIBAN_TIMEZONE: Type.String({ default: 'Asia/Jakarta' }),
+    WA_ANTIBAN_CIRCADIAN_PROFILE: Type.String({ default: 'default' }),
+    WA_ANTIBAN_AUTO_PAUSE: Type.String({ default: 'high' }),
   })
 
   await fastify.register(fastifyEnv, {

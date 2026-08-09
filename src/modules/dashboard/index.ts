@@ -51,8 +51,16 @@ export default async function dashboardModule(fastify: FastifyTypebox) {
       const totalItems = Number(totalCountResult[0].count)
       const totalPages = Math.ceil(totalItems / pageSize)
 
+      const tenantsWithAntiBan = data.map((t) => {
+        const antiBanInfo = fastify.wa.getAntiBanStats(t.id)
+        return {
+          ...t,
+          antiBan: antiBanInfo,
+        }
+      })
+
       return reply.view('dashboard/views/index.ejs', {
-        tenants: data,
+        tenants: tenantsWithAntiBan,
         user: req.user,
         pagination: {
           currentPage: page,
@@ -198,6 +206,39 @@ export default async function dashboardModule(fastify: FastifyTypebox) {
       return reply.view('dashboard/views/modals/logs.ejs', {
         logs,
         tenantId: id,
+      })
+    },
+  )
+
+  // -- GET /tenants/:id/antiban (Modal UI) --
+  fastify.get(
+    '/tenants/:id/antiban',
+    {
+      schema: { params: ParamIdSchema },
+    },
+    async (req, reply) => {
+      const { id } = req.params
+
+      const [tenant] = await fastify.db
+        .select({ id: tenants.id, name: tenants.name })
+        .from(tenants)
+        .where(eq(tenants.id, id))
+        .limit(1)
+
+      if (!tenant) {
+        return reply.status(404).send({ error: 'Tenant not found' })
+      }
+
+      const antiBanInfo = fastify.wa.getAntiBanStats(id)
+
+      return reply.view('dashboard/views/modals/antiban.ejs', {
+        tenantId: tenant.id,
+        tenantName: tenant.name,
+        enabled: antiBanInfo.enabled,
+        riskLevel: antiBanInfo.riskLevel,
+        score: antiBanInfo.score ?? 100,
+        warmUpDay: antiBanInfo.warmUpDay ?? 1,
+        stats: antiBanInfo.stats,
       })
     },
   )
