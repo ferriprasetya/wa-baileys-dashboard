@@ -5,7 +5,7 @@ services:
     container_name: wa-antiban-app
     restart: unless-stopped
     ports:
-      - '3000:3000'
+      - '4000:3000'
     env_file: .env
     depends_on:
       postgres:
