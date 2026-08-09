@@ -2,7 +2,7 @@ services:
   # Main Application (Fastify)
   app:
     build: .
-    container_name: wa-gateway-app
+    container_name: wa-antiban-app
     restart: unless-stopped
     ports:
       - '3000:3000'
@@ -18,7 +18,7 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
-    container_name: wa-gateway-db
+    container_name: wa-antiban-db
     restart: always
     ports:
       - '127.0.0.1:15433:5432'
@@ -39,7 +39,7 @@ services:
   # Redis Queue
   redis:
     image: redis:7-alpine
-    container_name: wa-gateway-redis
+    container_name: wa-antiban-redis
     restart: always
     volumes:
       - redisdata:/data
