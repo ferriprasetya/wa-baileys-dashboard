@@ -205,6 +205,11 @@ export class ConnectionManager extends EventEmitter {
         )
       : rawSock
 
+    // Patch sendMessage to default options to {} (fixes baileys-antiban options.circuitBreaker undefined bug)
+    const origSendMessage = sock.sendMessage.bind(sock)
+    sock.sendMessage = (jid: string, content: any, options: any = {}) =>
+      origSendMessage(jid, content, options || {})
+
     // Store wrapped socket in memory
     this.sockets.set(sessionId, sock)
 

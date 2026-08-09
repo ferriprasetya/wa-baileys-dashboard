@@ -60,7 +60,7 @@ export const initWorker = (fastify: FastifyInstance) => {
       // 5. Send Message via wrapped Anti-Ban socket
       // (baileys-antiban automatically applies presence, typing, circadian delays, and rate limiting)
       const formattedMessage = processMessageFormatting(message)
-      await socket.sendMessage(jid, { text: formattedMessage })
+      await socket.sendMessage(jid, { text: formattedMessage }, {})
 
       // 6. Update Log Status to SENT
       await fastify.db
