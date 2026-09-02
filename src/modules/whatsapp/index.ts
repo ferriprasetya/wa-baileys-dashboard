@@ -219,7 +219,21 @@ export default fp(async (fastify: FastifyTypebox) => {
     tenantId: Type.String(),
     apiKey: Type.String(),
     to: Type.String({ minLength: 5 }), // phone number
-    message: Type.String({ minLength: 1 }),
+    message: Type.Optional(Type.String()),
+    mediaUrl: Type.Optional(Type.String()),
+    url: Type.Optional(Type.String()),
+    fileUrl: Type.Optional(Type.String()),
+    fileName: Type.Optional(Type.String()),
+    mimetype: Type.Optional(Type.String()),
+    mediaType: Type.Optional(
+      Type.Union([
+        Type.Literal('document'),
+        Type.Literal('image'),
+        Type.Literal('video'),
+        Type.Literal('audio'),
+        Type.Literal('auto'),
+      ]),
+    ),
   })
 
   fastify.post(
@@ -233,13 +247,22 @@ export default fp(async (fastify: FastifyTypebox) => {
             jobId: Type.String(),
             queuePosition: Type.Number(),
           }),
+          400: Type.Object({ error: Type.String() }),
           401: Type.Object({ error: Type.String() }),
           404: Type.Object({ error: Type.String() }),
         },
       },
     },
     async (req, reply) => {
-      const { tenantId, apiKey, to, message } = req.body
+      const { tenantId, apiKey, to, message, fileName, mimetype, mediaType } = req.body
+      const targetMediaUrl = req.body.mediaUrl || req.body.url || req.body.fileUrl
+
+      const trimmedMessage = message?.trim() || ''
+
+      // Validation: at least message or mediaUrl must be provided
+      if (!trimmedMessage && !targetMediaUrl) {
+        return reply.status(400).send({ error: 'Either message or mediaUrl must be provided' })
+      }
 
       // SECURITY CHECK: Tenant & API Key check
       const [tenant] = await fastify.db
@@ -258,23 +281,34 @@ export default fp(async (fastify: FastifyTypebox) => {
         return reply.status(401).send({ error: 'Invalid API Key' })
       }
 
+      // Determine log content description
+      let logContent = message || ''
+      if (targetMediaUrl) {
+        const fileLabel = fileName ? `[File: ${fileName}]` : `[File: ${targetMediaUrl}]`
+        logContent = message ? `${fileLabel} ${message}` : fileLabel
+      }
+
       // INSERT LOG (Status: QUEUED)
       const [log] = await fastify.db
         .insert(messageLogs)
         .values({
           tenantId,
           to,
-          content: message,
+          content: logContent,
           status: 'QUEUED',
         })
         .returning()
 
       // QUEUE LOGIC
-      const job = await messageQueue.add('send-text', {
+      const job = await messageQueue.add('send-message', {
         logId: log.id,
         tenantId,
         to,
-        message,
+        message: message || '',
+        mediaUrl: targetMediaUrl,
+        fileName,
+        mimetype,
+        mediaType,
       })
 
       // Instant Feedback

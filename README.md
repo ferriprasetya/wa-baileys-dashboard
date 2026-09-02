@@ -206,7 +206,7 @@ Send messages to WhatsApp via HTTP POST request.
 3. Click the **"View Credentials"** button on the desired tenant
 4. Copy the `Tenant ID` and `API Key` from the modal dialog
 
-**Request Body:**
+**Request Body (Text Message):**
 
 ```json
 {
@@ -217,14 +217,33 @@ Send messages to WhatsApp via HTTP POST request.
 }
 ```
 
+**Request Body (File / Document / Media Message):**
+
+```json
+{
+  "tenantId": "YOUR_TENANT_ID_HERE",
+  "apiKey": "YOUR_API_KEY_HERE",
+  "to": "628123456789",
+  "message": "Here is your payslip",
+  "mediaUrl": "https://example.com/files/Slip_Gaji.pdf",
+  "fileName": "Slip_Gaji.pdf"
+}
+```
+
 **Request Body Parameters:**
 
-| Parameter  | Type   | Description                                       |
-| :--------- | :----- | :------------------------------------------------ |
-| `tenantId` | string | Unique identifier for the WhatsApp tenant/session |
-| `apiKey`   | string | API key for authenticating the request            |
-| `to`       | string | Recipient phone number (format: 628xxx...)        |
-| `message`  | string | Message content (supports formatting)             |
+| Parameter | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `tenantId` | string | Yes | Unique identifier for the WhatsApp tenant/session |
+| `apiKey` | string | Yes | API key for authenticating the request |
+| `to` | string | Yes | Recipient phone number (format: `628xxx...`) |
+| `message` | string | Optional | Text message content or media caption |
+| `mediaUrl` | string | Optional* | Direct URL to file (`url` and `fileUrl` are also accepted) |
+| `fileName` | string | Optional | File name with extension (e.g. `Slip_Gaji.pdf`, `report.xlsx`) |
+| `mimetype` | string | Optional | Explicit MIME type (e.g. `application/pdf`, `image/png`) |
+| `mediaType`| string | Optional | Media type: `document`, `image`, `video`, `audio`, or `auto` (default) |
+
+*\* Note: Either `message` or `mediaUrl` (or `url`/`fileUrl`) must be provided.*
 
 **Request Headers:**
 
@@ -239,6 +258,14 @@ Content-Type: application/json
   "status": "queued",
   "jobId": "12345",
   "queuePosition": 5
+}
+```
+
+**Response (400 Bad Request):**
+
+```json
+{
+  "error": "Either message or mediaUrl must be provided"
 }
 ```
 

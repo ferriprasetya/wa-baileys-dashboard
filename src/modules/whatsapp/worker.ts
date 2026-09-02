@@ -3,11 +3,70 @@ import { Worker, Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { FastifyInstance } from 'fastify'
 
-interface SendMessageData {
+export interface SendMessageData {
   logId: string
   tenantId: string
   to: string
-  message: string
+  message?: string
+  mediaUrl?: string
+  fileName?: string
+  mimetype?: string
+  mediaType?: 'document' | 'image' | 'video' | 'audio' | 'auto'
+}
+
+// Common file extension to MIME type map
+const MIME_EXT_MAP: Record<string, string> = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  svg: 'image/svg+xml',
+  mp4: 'video/mp4',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+  mov: 'video/quicktime',
+  mp3: 'audio/mpeg',
+  ogg: 'audio/ogg',
+  wav: 'audio/wav',
+  m4a: 'audio/mp4',
+  aac: 'audio/aac',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xls: 'application/vnd.ms-excel',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  doc: 'application/msword',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  ppt: 'application/vnd.ms-powerpoint',
+  csv: 'text/csv',
+  txt: 'text/plain',
+  zip: 'application/zip',
+  rar: 'application/x-rar-compressed',
+  '7z': 'application/x-7z-compressed',
+}
+
+// Helper function to extract filename from URL if not explicitly provided
+const extractFileName = (urlStr: string, defaultName = 'file'): string => {
+  try {
+    const parsed = new URL(urlStr)
+    const pathname = parsed.pathname
+    const basename = pathname.split('/').filter(Boolean).pop()
+    return basename ? decodeURIComponent(basename) : defaultName
+  } catch {
+    return defaultName
+  }
+}
+
+// Helper function to resolve MIME type
+const resolveMimeType = (fileName: string, explicitMime?: string, headerMime?: string | null): string => {
+  if (explicitMime && explicitMime.trim() !== '') {
+    return explicitMime.split(';')[0].trim()
+  }
+  if (headerMime && headerMime !== 'application/octet-stream' && headerMime !== 'binary/octet-stream') {
+    return headerMime.split(';')[0].trim()
+  }
+  const ext = fileName.split('.').pop()?.toLowerCase() || ''
+  return MIME_EXT_MAP[ext] || 'application/octet-stream'
 }
 
 // Helper function to process message formatting
@@ -33,7 +92,7 @@ export const initWorker = (fastify: FastifyInstance) => {
   const worker = new Worker<SendMessageData>(
     'wa-sending-queue',
     async (job: Job<SendMessageData>) => {
-      const { tenantId, to, message, logId } = job.data
+      const { tenantId, to, message, logId, mediaUrl, fileName, mimetype, mediaType = 'auto' } = job.data
 
       fastify.log.info(`[Worker] Processing Job ${job.id} for Tenant ${tenantId}`)
 
@@ -57,12 +116,83 @@ export const initWorker = (fastify: FastifyInstance) => {
       // 4. Format JID (Phone Number)
       const jid = to.includes('@s.whatsapp.net') ? to : `${to}@s.whatsapp.net`
 
-      // 5. Send Message via wrapped Anti-Ban socket
-      // (baileys-antiban automatically applies presence, typing, circadian delays, and rate limiting)
-      const formattedMessage = processMessageFormatting(message)
-      await socket.sendMessage(jid, { text: formattedMessage }, {})
+      // 5. Format Caption / Text Message if present
+      const formattedMessage = message ? processMessageFormatting(message) : ''
 
-      // 6. Update Log Status to SENT
+      // 6. Send Message (Media or Text)
+      if (mediaUrl) {
+        fastify.log.info(`[Worker] Downloading media from ${mediaUrl} for tenant ${tenantId}...`)
+
+        // Download media buffer
+        const response = await fetch(mediaUrl, {
+          signal: AbortSignal.timeout(60000), // 60s download timeout
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to download media from ${mediaUrl}: HTTP ${response.status} ${response.statusText}`)
+        }
+
+        const arrayBuffer = await response.arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer)
+        const headerContentType = response.headers.get('content-type')
+
+        const resolvedFileName = fileName || extractFileName(mediaUrl, 'document')
+        const resolvedMime = resolveMimeType(resolvedFileName, mimetype, headerContentType)
+
+        fastify.log.info(
+          `[Worker] Sending media message (${resolvedMime}, file: ${resolvedFileName}) to ${jid}...`,
+        )
+
+        // Determine message type based on mediaType and MIME type
+        if (mediaType === 'image' || (mediaType === 'auto' && resolvedMime.startsWith('image/') && !resolvedMime.includes('svg'))) {
+          await socket.sendMessage(
+            jid,
+            {
+              image: buffer,
+              mimetype: resolvedMime,
+              caption: formattedMessage || undefined,
+            },
+            {},
+          )
+        } else if (mediaType === 'video' || (mediaType === 'auto' && resolvedMime.startsWith('video/'))) {
+          await socket.sendMessage(
+            jid,
+            {
+              video: buffer,
+              mimetype: resolvedMime,
+              caption: formattedMessage || undefined,
+            },
+            {},
+          )
+        } else if (mediaType === 'audio' || (mediaType === 'auto' && resolvedMime.startsWith('audio/'))) {
+          await socket.sendMessage(
+            jid,
+            {
+              audio: buffer,
+              mimetype: resolvedMime,
+              ptt: false,
+            },
+            {},
+          )
+        } else {
+          // Default to Document (PDF, Word, Excel, generic files, or mediaType === 'document')
+          await socket.sendMessage(
+            jid,
+            {
+              document: buffer,
+              mimetype: resolvedMime,
+              fileName: resolvedFileName,
+              caption: formattedMessage || undefined,
+            },
+            {},
+          )
+        }
+      } else {
+        // Send Text Message
+        await socket.sendMessage(jid, { text: formattedMessage }, {})
+      }
+
+      // 7. Update Log Status to SENT
       await fastify.db
         .update(messageLogs)
         .set({ status: 'SENT', updatedAt: new Date(), error: null })
@@ -104,3 +234,4 @@ export const initWorker = (fastify: FastifyInstance) => {
 
   return worker
 }
+
